@@ -1,0 +1,23 @@
+{
+  "storeId": "store-1",
+  "updates": [
+    {
+      "productId": "SKU-001",
+      "delta": 1,
+      "version": 18,
+      "idempotencyKey": "batch-load-sku001-${RANDOM}"
+    },
+    {
+      "productId": "SKU-002",
+      "delta": 1,
+      "version": 10,
+      "idempotencyKey": "batch-load-sku002-${RANDOM}"
+    },
+    {
+      "productId": "SKU-003",
+      "delta": 1,
+      "version": 17,
+      "idempotencyKey": "batch-load-sku003-${RANDOM}"
+    }
+  ]
+}
