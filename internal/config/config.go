@@ -9,10 +9,15 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	Port        string
-	DataPath    string
-	LogLevel    string
-	Environment string
+	Port                            string
+	DataPath                        string
+	LogLevel                        string
+	Environment                     string
+	IdempotencyCacheTTL             string
+	IdempotencyCacheCleanupInterval string
+	EnableJSONPersistence           string
+	InventoryWorkerCount            string
+	InventoryQueueBufferSize        string
 }
 
 // LoadConfig loads configuration from .env file and environment variables
@@ -27,10 +32,15 @@ func LoadConfig() *Config {
 	}
 
 	config := &Config{
-		Port:        getEnvWithDefault("PORT", "8080"),
-		DataPath:    getEnvWithDefault("DATA_PATH", "data/inventory_test_data.json"),
-		LogLevel:    getEnvWithDefault("LOG_LEVEL", "info"),
-		Environment: getEnvWithDefault("ENVIRONMENT", "development"),
+		Port:                            getEnvWithDefault("PORT", "8080"),
+		DataPath:                        getEnvWithDefault("DATA_PATH", "data/inventory_test_data.json"),
+		LogLevel:                        getEnvWithDefault("LOG_LEVEL", "info"),
+		Environment:                     getEnvWithDefault("ENVIRONMENT", "development"),
+		IdempotencyCacheTTL:             getEnvWithDefault("IDEMPOTENCY_CACHE_TTL", "2m"),
+		IdempotencyCacheCleanupInterval: getEnvWithDefault("IDEMPOTENCY_CACHE_CLEANUP_INTERVAL", "30s"),
+		EnableJSONPersistence:           getEnvWithDefault("ENABLE_JSON_PERSISTENCE", "true"),
+		InventoryWorkerCount:            getEnvWithDefault("INVENTORY_WORKER_COUNT", "1"),
+		InventoryQueueBufferSize:        getEnvWithDefault("INVENTORY_QUEUE_BUFFER_SIZE", "100"),
 	}
 
 	// Configure slog based on log level
@@ -40,7 +50,12 @@ func LoadConfig() *Config {
 		"port", config.Port,
 		"environment", config.Environment,
 		"logLevel", config.LogLevel,
-		"dataPath", config.DataPath)
+		"dataPath", config.DataPath,
+		"idempotencyCacheTTL", config.IdempotencyCacheTTL,
+		"idempotencyCacheCleanupInterval", config.IdempotencyCacheCleanupInterval,
+		"enableJSONPersistence", config.EnableJSONPersistence,
+		"inventoryWorkerCount", config.InventoryWorkerCount,
+		"inventoryQueueBufferSize", config.InventoryQueueBufferSize)
 
 	return config
 }

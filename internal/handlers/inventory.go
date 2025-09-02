@@ -61,6 +61,9 @@ func (h *InventoryHandler) UpdateInventory(w http.ResponseWriter, r *http.Reques
 			"remote_addr", r.RemoteAddr)
 
 		response := h.processBatchUpdate(req)
+
+		// For batch updates, return 200 even if some items failed
+		// The client can check individual results
 		writeJSONResponse(w, http.StatusOK, response)
 	} else {
 		// Single update operation
@@ -71,11 +74,24 @@ func (h *InventoryHandler) UpdateInventory(w http.ResponseWriter, r *http.Reques
 			"remote_addr", r.RemoteAddr)
 
 		response := h.processSingleUpdate(req)
-		writeJSONResponse(w, http.StatusOK, response)
+
+		// For single updates, return appropriate HTTP status based on result
+		if !response.Applied {
+			// Check if it's a version conflict or other error
+			if req.Version >= 0 {
+				// Likely a version conflict or business logic error
+				writeJSONResponse(w, http.StatusConflict, response)
+			} else {
+				// Bad request (missing fields, etc.)
+				writeJSONResponse(w, http.StatusBadRequest, response)
+			}
+		} else {
+			writeJSONResponse(w, http.StatusOK, response)
+		}
 	}
 }
 
-// processSingleUpdate handles single product updates
+// processSingleUpdate handles single product updates with OCC and idempotency
 func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.UpdateResponse {
 	// Validate single update request
 	if req.ProductID == "" {
@@ -86,24 +102,59 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 		}
 	}
 
-	// Placeholder response - in real implementation, this would apply OCC and update state
-	response := models.UpdateResponse{
-		ProductID:   req.ProductID,
-		NewQuantity: 20, // Placeholder value
-		NewVersion:  req.Version + 1,
-		Applied:     true,
-		LastUpdated: "2025-09-02T10:00:00Z",
+	if req.IdempotencyKey == "" {
+		slog.Warn("Missing idempotency key in single update", "product_id", req.ProductID)
+		return models.UpdateResponse{
+			ProductID: req.ProductID,
+			Applied:   false,
+		}
 	}
 
-	slog.Debug("Single update processed",
-		"product_id", req.ProductID,
-		"new_quantity", response.NewQuantity,
-		"applied", response.Applied)
+	// Submit update to queue-based service
+	result, err := h.inventoryService.UpdateInventory(
+		req.ProductID,
+		req.Delta,
+		req.Version,
+		req.IdempotencyKey,
+		req.StoreID,
+	)
+
+	if err != nil {
+		slog.Error("Failed to process single update",
+			"product_id", req.ProductID,
+			"error", err)
+		return models.UpdateResponse{
+			ProductID: req.ProductID,
+			Applied:   false,
+		}
+	}
+
+	response := models.UpdateResponse{
+		ProductID:   req.ProductID,
+		NewQuantity: result.NewQuantity,
+		NewVersion:  result.NewVersion,
+		Applied:     result.Applied,
+		LastUpdated: result.LastUpdated,
+	}
+
+	if result.Success {
+		slog.Info("Single update processed successfully",
+			"product_id", req.ProductID,
+			"new_quantity", response.NewQuantity,
+			"new_version", response.NewVersion,
+			"delta", req.Delta,
+			"idempotency_key", req.IdempotencyKey)
+	} else {
+		slog.Warn("Single update failed",
+			"product_id", req.ProductID,
+			"error", result.Error,
+			"idempotency_key", req.IdempotencyKey)
+	}
 
 	return response
 }
 
-// processBatchUpdate handles batch product updates
+// processBatchUpdate handles batch product updates with OCC and idempotency
 func (h *InventoryHandler) processBatchUpdate(req models.UpdateRequest) models.UpdateResponse {
 	results := make([]models.ProductUpdateResult, 0, len(req.Updates))
 	succeeded := 0
@@ -121,22 +172,65 @@ func (h *InventoryHandler) processBatchUpdate(req models.UpdateRequest) models.U
 			continue
 		}
 
-		// Placeholder processing - in real implementation, this would apply OCC and update state
-		result := models.ProductUpdateResult{
-			ProductID:   update.ProductID,
-			NewQuantity: 20, // Placeholder value
-			NewVersion:  update.Version + 1,
-			Applied:     true,
-			LastUpdated: "2025-09-02T10:00:00Z",
+		if update.IdempotencyKey == "" {
+			slog.Warn("Missing idempotency key in batch update item", "product_id", update.ProductID)
+			results = append(results, models.ProductUpdateResult{
+				ProductID: update.ProductID,
+				Applied:   false,
+				Error:     "Missing idempotency key",
+			})
+			failed++
+			continue
+		}
+
+		// Submit update to queue-based service
+		serviceResult, err := h.inventoryService.UpdateInventory(
+			update.ProductID,
+			update.Delta,
+			update.Version,
+			update.IdempotencyKey,
+			req.StoreID,
+		)
+
+		var result models.ProductUpdateResult
+		if err != nil {
+			slog.Error("Failed to process batch update item",
+				"product_id", update.ProductID,
+				"error", err)
+			result = models.ProductUpdateResult{
+				ProductID: update.ProductID,
+				Applied:   false,
+				Error:     err.Error(),
+			}
+			failed++
+		} else if !serviceResult.Success {
+			result = models.ProductUpdateResult{
+				ProductID:   update.ProductID,
+				NewQuantity: serviceResult.NewQuantity,
+				NewVersion:  serviceResult.NewVersion,
+				Applied:     false,
+				LastUpdated: serviceResult.LastUpdated,
+				Error:       serviceResult.Error.Error(),
+			}
+			failed++
+		} else {
+			result = models.ProductUpdateResult{
+				ProductID:   update.ProductID,
+				NewQuantity: serviceResult.NewQuantity,
+				NewVersion:  serviceResult.NewVersion,
+				Applied:     true,
+				LastUpdated: serviceResult.LastUpdated,
+			}
+			succeeded++
 		}
 
 		results = append(results, result)
-		succeeded++
 
 		slog.Debug("Batch update item processed",
 			"product_id", update.ProductID,
 			"new_quantity", result.NewQuantity,
-			"applied", result.Applied)
+			"applied", result.Applied,
+			"idempotency_key", update.IdempotencyKey)
 	}
 
 	response := models.UpdateResponse{

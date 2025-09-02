@@ -3,30 +3,30 @@
     "SKU-001": {
       "productId": "SKU-001",
       "name": "Smartphone Samsung Galaxy S24",
-      "available": 45,
-      "version": 12,
-      "lastUpdated": "2025-09-02T10:30:00Z"
+      "available": 50,
+      "version": 13,
+      "lastUpdated": "2025-09-02T06:01:41Z"
     },
     "SKU-002": {
       "productId": "SKU-002",
       "name": "Laptop Dell XPS 13",
-      "available": 23,
-      "version": 8,
-      "lastUpdated": "2025-09-02T09:45:00Z"
+      "available": 24,
+      "version": 9,
+      "lastUpdated": "2025-09-02T06:02:22Z"
     },
     "SKU-003": {
       "productId": "SKU-003",
       "name": "Auriculares Sony WH-1000XM5",
-      "available": 67,
-      "version": 15,
-      "lastUpdated": "2025-09-02T11:15:00Z"
+      "available": 69,
+      "version": 16,
+      "lastUpdated": "2025-09-02T06:02:22Z"
     },
     "SKU-004": {
       "productId": "SKU-004",
       "name": "Tablet iPad Air",
-      "available": 12,
-      "version": 6,
-      "lastUpdated": "2025-09-02T08:20:00Z"
+      "available": 15,
+      "version": 7,
+      "lastUpdated": "2025-09-02T06:02:22Z"
     },
     "SKU-005": {
       "productId": "SKU-005",
@@ -72,8 +72,8 @@
     }
   },
   "metadata": {
-    "lastOffset": 1287,
+    "lastOffset": 1291,
     "totalProducts": 10,
-    "lastUpdated": "2025-09-02T12:00:00Z"
+    "lastUpdated": "2025-09-02T06:02:22Z"
   }
 }

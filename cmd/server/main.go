@@ -21,7 +21,7 @@ func main() {
 	r := mux.NewRouter()
 
 	// Initialize services
-	inventoryService, err := services.NewInventoryService()
+	inventoryService, err := services.NewInventoryService(cfg)
 	if err != nil {
 		slog.Error("Failed to initialize inventory service", "error", err)
 		return
