@@ -31,13 +31,13 @@ The server will start on port 8080 by default.
 
 ## API Endpoints
 
-All endpoints require authentication via `X-API-Key` header. For testing, use `demo` as the API key.
+All API endpoints are versioned using URL path versioning (e.g., `/v1/`). All endpoints require authentication via `X-API-Key` header. For testing, use `demo` as the API key.
 
-### Central Inventory API
+### Central Inventory API (v1)
 
 #### Mutate Stock
 ```bash
-POST /inventory/updates
+POST /v1/inventory/updates
 Content-Type: application/json
 X-API-Key: demo
 
@@ -52,7 +52,7 @@ X-API-Key: demo
 
 #### Bulk Sync
 ```bash
-POST /inventory/sync
+POST /v1/inventory/sync
 Content-Type: application/json
 X-API-Key: demo
 
@@ -67,34 +67,42 @@ X-API-Key: demo
 
 #### Read Product
 ```bash
-GET /inventory/{productId}
+GET /v1/inventory/{productId}
 X-API-Key: demo
 ```
 
 #### Global Availability
 ```bash
-GET /inventory/global/{productId}
+GET /v1/inventory/global/{productId}
 X-API-Key: demo
 ```
 
 #### List Products
 ```bash
-GET /inventory?cursor=&limit=50
+GET /v1/inventory?cursor=&limit=50
 X-API-Key: demo
 ```
 
-### Replication API
+### Replication API (v1)
 
 #### Get Snapshot
 ```bash
-GET /replication/snapshot
+GET /v1/replication/snapshot
 X-API-Key: demo
 ```
 
 #### Get Changes
 ```bash
-GET /replication/changes?fromOffset=1287&limit=500&longPollSeconds=20
+GET /v1/replication/changes?fromOffset=1287&limit=500&longPollSeconds=20
 X-API-Key: demo
+```
+
+### System Endpoints
+
+#### Health Check
+```bash
+GET /health
+# No authentication required, unversioned system endpoint
 ```
 
 
@@ -112,26 +120,31 @@ GET /health
 1. **Create/Update inventory:**
 ```bash
 curl -H 'X-API-Key: demo' -H 'Content-Type: application/json' \
-  -X POST http://localhost:8080/inventory/updates \
+  -X POST http://localhost:8080/v1/inventory/updates \
   -d '{"storeId":"store-7","productId":"SKU-123","delta":5,"version":0,"idempotencyKey":"test-key-1"}'
 ```
 
 2. **Read product:**
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/inventory/SKU-123
+curl -H 'X-API-Key: demo' http://localhost:8080/v1/inventory/SKU-123
 ```
 
 3. **Get global availability:**
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/inventory/global/SKU-123
+curl -H 'X-API-Key: demo' http://localhost:8080/v1/inventory/global/SKU-123
 ```
 
 4. **List products:**
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/inventory
+curl -H 'X-API-Key: demo' http://localhost:8080/v1/inventory
 ```
 
-5. **Health check:**
+5. **Get replication snapshot:**
+```bash
+curl -H 'X-API-Key: demo' http://localhost:8080/v1/replication/snapshot
+```
+
+6. **Health check (unversioned):**
 ```bash
 curl http://localhost:8080/health
 ```
@@ -142,6 +155,7 @@ This is a **basic server setup** with route definitions and placeholder response
 
 ✅ **Completed:**
 - All Central Inventory API endpoints defined in Architecture_brief.md
+- **API versioning with `/v1/` prefix** for all business endpoints
 - Proper HTTP methods (GET, POST)
 - Authentication middleware (X-API-Key header)
 - Structured request/response types
@@ -151,6 +165,7 @@ This is a **basic server setup** with route definitions and placeholder response
 - Query parameter handling
 - Clean project structure following Go best practices
 - Separation of concerns with proper package organization
+- **Unversioned system endpoints** (health check)
 
 🚧 **Placeholder/Mock Responses:**
 - All endpoints return static placeholder data
@@ -171,6 +186,22 @@ This is a **basic server setup** with route definitions and placeholder response
 7. **Observability:** Add OpenTelemetry integration
 8. **Testing:** Add comprehensive unit and integration tests
 9. **Service Layer:** Add business logic layer between handlers and data
+
+## API Versioning Strategy
+
+This API implements **URL path versioning** following REST API best practices:
+
+- **Version Format**: `/v1/`, `/v2/`, etc.
+- **Current Version**: v1 (all endpoints prefixed with `/v1/`)
+- **Backward Compatibility**: Future versions will maintain compatibility
+- **System Endpoints**: Health check remains unversioned (`/health`)
+- **Evolution Ready**: Structure supports easy addition of v2, v3, etc.
+
+### Benefits:
+- **Explicit**: Version is clearly visible in the URL
+- **Cacheable**: Different versions can be cached separately
+- **Testable**: Easy to test different versions
+- **Client-friendly**: Clients can easily target specific versions
 
 ## Project Structure
 
