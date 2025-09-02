@@ -14,7 +14,19 @@ type ErrorDetail struct {
 
 // Request/Response types for inventory operations
 type UpdateRequest struct {
-	StoreID        string `json:"storeId"`
+	// Single product update fields
+	StoreID        string `json:"storeId,omitempty"`
+	ProductID      string `json:"productId,omitempty"`
+	Delta          int    `json:"delta,omitempty"`
+	Version        int    `json:"version,omitempty"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty"`
+
+	// Batch update fields
+	Updates []ProductUpdate `json:"updates,omitempty"`
+}
+
+// ProductUpdate represents a single product update in a batch operation
+type ProductUpdate struct {
 	ProductID      string `json:"productId"`
 	Delta          int    `json:"delta"`
 	Version        int    `json:"version"`
@@ -22,11 +34,33 @@ type UpdateRequest struct {
 }
 
 type UpdateResponse struct {
+	// Single product response fields
+	ProductID   string `json:"productId,omitempty"`
+	NewQuantity int    `json:"newQuantity,omitempty"`
+	NewVersion  int    `json:"newVersion,omitempty"`
+	Applied     bool   `json:"applied,omitempty"`
+	LastUpdated string `json:"lastUpdated,omitempty"`
+
+	// Batch response fields
+	Results []ProductUpdateResult `json:"results,omitempty"`
+	Summary *BatchSummary         `json:"summary,omitempty"`
+}
+
+// ProductUpdateResult represents the result of a single product update in a batch
+type ProductUpdateResult struct {
 	ProductID   string `json:"productId"`
 	NewQuantity int    `json:"newQuantity"`
 	NewVersion  int    `json:"newVersion"`
 	Applied     bool   `json:"applied"`
 	LastUpdated string `json:"lastUpdated"`
+	Error       string `json:"error,omitempty"`
+}
+
+// BatchSummary provides summary statistics for batch operations
+type BatchSummary struct {
+	Total     int `json:"total"`
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
 }
 
 type ProductResponse struct {
@@ -39,43 +73,4 @@ type ProductResponse struct {
 type ListResponse struct {
 	Items      []ProductResponse `json:"items"`
 	NextCursor string            `json:"nextCursor"`
-}
-
-type SyncRequest struct {
-	StoreID  string        `json:"storeId"`
-	Mode     string        `json:"mode"`
-	Products []SyncProduct `json:"products"`
-}
-
-type SyncProduct struct {
-	ID      string `json:"id"`
-	Qty     int    `json:"qty"`
-	Version int    `json:"version"`
-}
-
-type SyncResponse struct {
-	Updated int `json:"updated"`
-	Created int `json:"created"`
-	Skipped int `json:"skipped"`
-}
-
-type ReplicationSnapshot struct {
-	State      map[string]ProductResponse `json:"state"`
-	LastOffset int                        `json:"lastOffset"`
-}
-
-type ReplicationChanges struct {
-	Events     []ReplicationEvent `json:"events"`
-	NextOffset int                `json:"nextOffset"`
-	HasMore    bool               `json:"hasMore"`
-}
-
-type ReplicationEvent struct {
-	Seq        int    `json:"seq"`
-	Type       string `json:"type"`
-	ProductID  string `json:"productId"`
-	StoreID    string `json:"storeId"`
-	Delta      int    `json:"delta"`
-	NewVersion int    `json:"newVersion"`
-	Timestamp  string `json:"ts"`
 }

@@ -30,7 +30,6 @@ func main() {
 
 	// Initialize handlers
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
-	replicationHandler := handlers.NewReplicationHandler()
 	healthHandler := handlers.NewHealthHandler()
 	slog.Debug("HTTP handlers initialized")
 
@@ -40,13 +39,8 @@ func main() {
 
 	// Central Inventory API routes (v1)
 	v1.HandleFunc("/inventory/updates", inventoryHandler.UpdateInventory).Methods("POST")
-	v1.HandleFunc("/inventory/sync", inventoryHandler.SyncInventory).Methods("POST")
 	v1.HandleFunc("/inventory/{productId}", inventoryHandler.GetProduct).Methods("GET")
 	v1.HandleFunc("/inventory", inventoryHandler.ListProducts).Methods("GET")
-
-	// Replication API routes (v1)
-	v1.HandleFunc("/replication/snapshot", replicationHandler.GetSnapshot).Methods("GET")
-	v1.HandleFunc("/replication/changes", replicationHandler.GetChanges).Methods("GET")
 
 	// Health check endpoint (no auth required)
 	r.HandleFunc("/health", healthHandler.Health).Methods("GET")
@@ -57,12 +51,14 @@ func main() {
 
 	slog.Debug("Available endpoints",
 		"v1_endpoints", []string{
-			"POST /v1/inventory/updates",
-			"POST /v1/inventory/sync",
+			"POST /v1/inventory/updates (single & batch)",
 			"GET /v1/inventory/{productId}",
-			"GET /v1/inventory",
-			"GET /v1/replication/snapshot",
-			"GET /v1/replication/changes",
+			"GET /v1/inventory (with replication support)",
+		},
+		"replication_params", []string{
+			"?snapshot=true (full state)",
+			"?since=<offset> (changes)",
+			"?format=replication (metadata)",
 		},
 		"system_endpoints", []string{
 			"GET /health",
