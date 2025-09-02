@@ -3,19 +3,26 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strconv"
 
 	"inventory-management-api/internal/models"
+	"inventory-management-api/internal/services"
 
 	"github.com/gorilla/mux"
 )
 
 // InventoryHandler handles inventory-related HTTP requests
-type InventoryHandler struct{}
+type InventoryHandler struct {
+	inventoryService *services.InventoryService
+}
 
 // NewInventoryHandler creates a new inventory handler
-func NewInventoryHandler() *InventoryHandler {
-	return &InventoryHandler{}
+func NewInventoryHandler(inventoryService *services.InventoryService) *InventoryHandler {
+	return &InventoryHandler{
+		inventoryService: inventoryService,
+	}
 }
 
 // writeJSONResponse is a helper function to write JSON responses
@@ -74,55 +81,62 @@ func (h *InventoryHandler) SyncInventory(w http.ResponseWriter, r *http.Request)
 	writeJSONResponse(w, http.StatusOK, response)
 }
 
-// GetProduct handles GET /inventory/{productId} - Read product
+// GetProduct handles GET /v1/inventory/{productId} - Read product
 func (h *InventoryHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	productID := vars["productId"]
 
-	// Placeholder response
-	response := models.ProductResponse{
-		ProductID:   productID,
-		Available:   20,
-		Version:     5,
-		LastUpdated: "2025-09-02T10:00:00Z",
+	// Validate that productId is not empty
+	if productID == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "bad_request", "Product ID is required", []models.ErrorDetail{
+			{Field: "productId", Issue: "cannot be empty"},
+		})
+		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, response)
-}
-
-// GetGlobalAvailability handles GET /inventory/global/{productId} - Global availability
-func (h *InventoryHandler) GetGlobalAvailability(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	productID := vars["productId"]
-
-	// Placeholder response
-	response := models.GlobalAvailabilityResponse{
-		ProductID:      productID,
-		TotalAvailable: 420,
-		PerStore: map[string]int{
-			"store-1": 50,
-			"store-7": 19,
-			"store-3": 351,
-		},
+	// Get the product from the service
+	product, err := h.inventoryService.GetProduct(productID)
+	if err != nil {
+		// If product doesn't exist, return 404
+		writeErrorResponse(w, http.StatusNotFound, "not_found", fmt.Sprintf("Product not found: %s", productID), nil)
+		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, response)
+	// Return successful response
+	writeJSONResponse(w, http.StatusOK, product)
 }
 
-// ListProducts handles GET /inventory - List products with cursor pagination
+// ListProducts handles GET /v1/inventory - List products with cursor pagination
 func (h *InventoryHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	cursor := r.URL.Query().Get("cursor")
-	limit := r.URL.Query().Get("limit")
+	limitStr := r.URL.Query().Get("limit")
 
-	// Placeholder response
-	response := models.ListResponse{
-		Items: []models.ProductResponse{
-			{ProductID: "SKU-1", Available: 20, Version: 3, LastUpdated: "2025-09-02T10:00:00Z"},
-			{ProductID: "SKU-2", Available: 5, Version: 1, LastUpdated: "2025-09-02T09:30:00Z"},
-		},
-		NextCursor: "", // Empty means no more pages
+	// Parse the limit (default 50)
+	limit := 50
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
 	}
 
-	fmt.Printf("Listing products with cursor: %s, limit: %s\n", cursor, limit)
-	writeJSONResponse(w, http.StatusOK, response)
+	slog.Debug("Listing products",
+		"cursor", cursor,
+		"limit", limit,
+		"remote_addr", r.RemoteAddr)
+
+	// Get the product list from the service
+	productList, err := h.inventoryService.ListProducts(cursor, limit)
+	if err != nil {
+		slog.Error("Failed to retrieve products", "error", err, "remote_addr", r.RemoteAddr)
+		writeErrorResponse(w, http.StatusInternalServerError, "internal_error", "Error retrieving products", nil)
+		return
+	}
+
+	slog.Info("Products listed successfully",
+		"cursor", cursor,
+		"limit", limit,
+		"found_count", len(productList.Items),
+		"remote_addr", r.RemoteAddr)
+
+	writeJSONResponse(w, http.StatusOK, productList)
 }
