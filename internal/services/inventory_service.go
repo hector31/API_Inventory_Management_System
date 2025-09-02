@@ -18,7 +18,8 @@ import (
 // InventoryService handles inventory business logic
 type InventoryService struct {
 	data                  *InventoryData
-	mutex                 sync.RWMutex
+	globalMutex           sync.RWMutex // Only for global operations like file saves
+	productLockManager    *ProductLockManager
 	updateQueue           chan *UpdateRequest
 	idempotencyCache      *cache.TTLCache
 	dataFilePath          string
@@ -111,6 +112,7 @@ func NewInventoryService(cfg *config.Config) (*InventoryService, error) {
 	service := &InventoryService{
 		updateQueue:           make(chan *UpdateRequest, queueBufferSize),
 		idempotencyCache:      cache.NewTTLCache(cacheTTL, cleanupInterval),
+		productLockManager:    NewProductLockManager(),
 		dataFilePath:          cfg.DataPath,
 		enableJSONPersistence: enablePersistence,
 		workerCount:           workerCount,
@@ -166,42 +168,45 @@ func (s *InventoryService) loadTestData() error {
 	return nil
 }
 
-// GetProduct retrieves a product by its ID
+// GetProduct retrieves a product by its ID using product-level read lock
 func (s *InventoryService) GetProduct(productID string) (*models.ProductResponse, error) {
 	slog.Debug("Retrieving product", "product_id", productID)
 
-	// Use read lock to ensure consistency
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	var response *models.ProductResponse
+	var err error
 
-	// Search for the product in the data
-	productData, exists := s.data.Products[productID]
-	if !exists {
-		slog.Warn("Product not found", "product_id", productID)
-		return nil, fmt.Errorf("product not found: %s", productID)
-	}
+	// Use product-level read lock for concurrent access
+	s.productLockManager.WithProductReadLock(productID, func() {
+		// Search for the product in the data
+		productData, exists := s.data.Products[productID]
+		if !exists {
+			slog.Warn("Product not found", "product_id", productID)
+			err = fmt.Errorf("product not found: %s", productID)
+			return
+		}
 
-	// Convert to response structure
-	response := &models.ProductResponse{
-		ProductID:   productData.ProductID,
-		Available:   productData.Available,
-		Version:     productData.Version,
-		LastUpdated: productData.LastUpdated,
-	}
+		// Convert to response structure
+		response = &models.ProductResponse{
+			ProductID:   productData.ProductID,
+			Available:   productData.Available,
+			Version:     productData.Version,
+			LastUpdated: productData.LastUpdated,
+		}
 
-	slog.Debug("Product retrieved successfully",
-		"product_id", productID,
-		"available", response.Available,
-		"version", response.Version)
+		slog.Debug("Product retrieved successfully",
+			"product_id", productID,
+			"available", response.Available,
+			"version", response.Version)
+	})
 
-	return response, nil
+	return response, err
 }
 
 // ListProducts retrieves a list of products with pagination
 func (s *InventoryService) ListProducts(cursor string, limit int) (*models.ListResponse, error) {
-	// Use read lock to ensure consistency
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	// Use global read lock for multi-product operations
+	s.globalMutex.RLock()
+	defer s.globalMutex.RUnlock()
 
 	// For simplicity, we return all products
 	// In a real implementation, we would implement proper pagination
@@ -302,7 +307,7 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		"version", req.Version,
 		"idempotency_key", req.IdempotencyKey)
 
-	// Check idempotency first using TTL cache
+	// Check idempotency first using TTL cache (no locking needed for cache check)
 	if cachedResult, exists := s.idempotencyCache.Get(req.IdempotencyKey); exists {
 		if result, ok := cachedResult.(*UpdateResult); ok {
 			slog.Info("Idempotent request detected, returning cached result",
@@ -312,93 +317,98 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		}
 	}
 
-	// Acquire write lock for the actual update
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	var result *UpdateResult
 
-	// Get current product data
-	productData, exists := s.data.Products[req.ProductID]
-	if !exists {
-		result := &UpdateResult{
-			Success: false,
-			Error:   fmt.Errorf("product not found: %s", req.ProductID),
-			Applied: false,
+	// Use product-level write lock for OCC-compliant update
+	s.productLockManager.WithProductWriteLock(req.ProductID, func() {
+		// Get current product data
+		productData, exists := s.data.Products[req.ProductID]
+		if !exists {
+			result = &UpdateResult{
+				Success: false,
+				Error:   fmt.Errorf("product not found: %s", req.ProductID),
+				Applied: false,
+			}
+			s.cacheIdempotencyResult(req.IdempotencyKey, result)
+			return
 		}
-		s.cacheIdempotencyResult(req.IdempotencyKey, result)
-		return result
-	}
 
-	// Check version for OCC
-	if productData.Version != req.Version {
-		result := &UpdateResult{
-			Success: false,
-			Error:   fmt.Errorf("version conflict: expected %d, got %d", productData.Version, req.Version),
-			Applied: false,
+		// Check version for OCC
+		if productData.Version != req.Version {
+			result = &UpdateResult{
+				Success: false,
+				Error:   fmt.Errorf("version conflict: expected %d, got %d", productData.Version, req.Version),
+				Applied: false,
+			}
+			s.cacheIdempotencyResult(req.IdempotencyKey, result)
+
+			slog.Warn("Version conflict detected",
+				"product_id", req.ProductID,
+				"expected_version", productData.Version,
+				"provided_version", req.Version,
+				"idempotency_key", req.IdempotencyKey)
+
+			return
 		}
+
+		// Calculate new quantity
+		newQuantity := productData.Available + req.Delta
+		if newQuantity < 0 {
+			result = &UpdateResult{
+				Success: false,
+				Error:   fmt.Errorf("insufficient inventory: current %d, delta %d", productData.Available, req.Delta),
+				Applied: false,
+			}
+			s.cacheIdempotencyResult(req.IdempotencyKey, result)
+			return
+		}
+
+		// Apply the update
+		newVersion := productData.Version + 1
+		lastUpdated := time.Now().UTC().Format(time.RFC3339)
+
+		productData.Available = newQuantity
+		productData.Version = newVersion
+		productData.LastUpdated = lastUpdated
+		s.data.Products[req.ProductID] = productData
+
+		// Update global metadata (requires brief global lock)
+		s.globalMutex.Lock()
+		s.data.Metadata.LastOffset++
+		s.data.Metadata.LastUpdated = lastUpdated
+		s.globalMutex.Unlock()
+
+		result = &UpdateResult{
+			Success:     true,
+			NewQuantity: newQuantity,
+			NewVersion:  newVersion,
+			Applied:     true,
+			LastUpdated: lastUpdated,
+		}
+
+		// Cache the result for idempotency
 		s.cacheIdempotencyResult(req.IdempotencyKey, result)
 
-		slog.Warn("Version conflict detected",
+		slog.Info("Inventory update applied successfully",
 			"product_id", req.ProductID,
-			"expected_version", productData.Version,
-			"provided_version", req.Version,
+			"old_quantity", productData.Available-req.Delta,
+			"new_quantity", newQuantity,
+			"old_version", req.Version,
+			"new_version", newVersion,
+			"delta", req.Delta,
 			"idempotency_key", req.IdempotencyKey)
+	})
 
-		return result
-	}
-
-	// Calculate new quantity
-	newQuantity := productData.Available + req.Delta
-	if newQuantity < 0 {
-		result := &UpdateResult{
-			Success: false,
-			Error:   fmt.Errorf("insufficient inventory: current %d, delta %d", productData.Available, req.Delta),
-			Applied: false,
+	// Persist changes to JSON file if enabled (outside of product lock)
+	if result.Success {
+		if saveErr := s.saveDataToFile(); saveErr != nil {
+			slog.Error("Failed to persist inventory data to file",
+				"error", saveErr,
+				"product_id", req.ProductID)
+			// Note: We don't fail the update operation if file save fails
+			// The in-memory state is still consistent
 		}
-		s.cacheIdempotencyResult(req.IdempotencyKey, result)
-		return result
 	}
-
-	// Apply the update
-	newVersion := productData.Version + 1
-	lastUpdated := time.Now().UTC().Format(time.RFC3339)
-
-	productData.Available = newQuantity
-	productData.Version = newVersion
-	productData.LastUpdated = lastUpdated
-	s.data.Products[req.ProductID] = productData
-
-	// Update metadata
-	s.data.Metadata.LastOffset++
-	s.data.Metadata.LastUpdated = lastUpdated
-
-	result := &UpdateResult{
-		Success:     true,
-		NewQuantity: newQuantity,
-		NewVersion:  newVersion,
-		Applied:     true,
-		LastUpdated: lastUpdated,
-	}
-
-	// Cache the result for idempotency
-	s.cacheIdempotencyResult(req.IdempotencyKey, result)
-
-	// Persist changes to JSON file if enabled
-	if saveErr := s.saveDataToFile(); saveErr != nil {
-		slog.Error("Failed to persist inventory data to file",
-			"error", saveErr,
-			"product_id", req.ProductID)
-		// Note: We don't fail the update operation if file save fails
-		// The in-memory state is still consistent
-	}
-
-	slog.Info("Inventory update applied successfully",
-		"product_id", req.ProductID,
-		"old_quantity", productData.Available-req.Delta,
-		"new_quantity", newQuantity,
-		"old_version", req.Version,
-		"new_version", newVersion,
-		"delta", req.Delta,
-		"idempotency_key", req.IdempotencyKey)
 
 	return result
 }
@@ -417,8 +427,16 @@ func (s *InventoryService) saveDataToFile() error {
 
 	slog.Debug("Saving inventory data to file", "path", s.dataFilePath)
 
+	// Use global read lock to get consistent snapshot of data
+	s.globalMutex.RLock()
+
 	// Marshal the data to JSON with indentation for readability
 	jsonData, err := json.MarshalIndent(s.data, "", "  ")
+	productsCount := len(s.data.Products)
+	lastOffset := s.data.Metadata.LastOffset
+
+	s.globalMutex.RUnlock()
+
 	if err != nil {
 		return fmt.Errorf("error marshaling inventory data: %w", err)
 	}
@@ -440,8 +458,8 @@ func (s *InventoryService) saveDataToFile() error {
 
 	slog.Info("Inventory data saved to file successfully",
 		"path", s.dataFilePath,
-		"products_count", len(s.data.Products),
-		"last_offset", s.data.Metadata.LastOffset)
+		"products_count", productsCount,
+		"last_offset", lastOffset)
 
 	return nil
 }
@@ -449,6 +467,11 @@ func (s *InventoryService) saveDataToFile() error {
 // GetCacheStats returns statistics about the idempotency cache
 func (s *InventoryService) GetCacheStats() map[string]interface{} {
 	return s.idempotencyCache.GetStats()
+}
+
+// GetLockStats returns statistics about the product lock manager
+func (s *InventoryService) GetLockStats() map[string]interface{} {
+	return s.productLockManager.GetLockStats()
 }
 
 // Stop gracefully shuts down the inventory service
