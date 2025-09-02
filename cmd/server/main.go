@@ -1,24 +1,38 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
-	"os"
 
+	"inventory-management-api/internal/config"
 	"inventory-management-api/internal/handlers"
 	"inventory-management-api/internal/middleware"
+	"inventory-management-api/internal/services"
 
 	"github.com/gorilla/mux"
 )
 
 func main() {
+	// Load configuration from .env file and environment variables
+	cfg := config.LoadConfig()
+
+	slog.Info("Starting Inventory Management API", "version", "1.0.0")
+
 	r := mux.NewRouter()
 
+	// Initialize services
+	inventoryService, err := services.NewInventoryService()
+	if err != nil {
+		slog.Error("Failed to initialize inventory service", "error", err)
+		return
+	}
+	slog.Info("Inventory service initialized successfully")
+
 	// Initialize handlers
-	inventoryHandler := handlers.NewInventoryHandler()
+	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	replicationHandler := handlers.NewReplicationHandler()
 	healthHandler := handlers.NewHealthHandler()
+	slog.Debug("HTTP handlers initialized")
 
 	// Apply auth middleware to v1 API routes
 	v1 := r.PathPrefix("/v1").Subrouter()
@@ -28,7 +42,6 @@ func main() {
 	v1.HandleFunc("/inventory/updates", inventoryHandler.UpdateInventory).Methods("POST")
 	v1.HandleFunc("/inventory/sync", inventoryHandler.SyncInventory).Methods("POST")
 	v1.HandleFunc("/inventory/{productId}", inventoryHandler.GetProduct).Methods("GET")
-	v1.HandleFunc("/inventory/global/{productId}", inventoryHandler.GetGlobalAvailability).Methods("GET")
 	v1.HandleFunc("/inventory", inventoryHandler.ListProducts).Methods("GET")
 
 	// Replication API routes (v1)
@@ -38,23 +51,27 @@ func main() {
 	// Health check endpoint (no auth required)
 	r.HandleFunc("/health", healthHandler.Health).Methods("GET")
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	slog.Info("Starting HTTP server",
+		"port", cfg.Port,
+		"environment", cfg.Environment)
+
+	slog.Debug("Available endpoints",
+		"v1_endpoints", []string{
+			"POST /v1/inventory/updates",
+			"POST /v1/inventory/sync",
+			"GET /v1/inventory/{productId}",
+			"GET /v1/inventory",
+			"GET /v1/replication/snapshot",
+			"GET /v1/replication/changes",
+		},
+		"system_endpoints", []string{
+			"GET /health",
+		})
+
+	slog.Info("Server ready to accept connections", "address", ":"+cfg.Port)
+
+	err = http.ListenAndServe(":"+cfg.Port, r)
+	if err != nil {
+		slog.Error("Server failed to start", "error", err)
 	}
-
-	fmt.Printf("Starting Central Inventory Management API server on port %s\n", port)
-	fmt.Println("Available endpoints:")
-	fmt.Println("  API v1:")
-	fmt.Println("    POST /v1/inventory/updates - Mutate stock")
-	fmt.Println("    POST /v1/inventory/sync - Bulk sync")
-	fmt.Println("    GET  /v1/inventory/{productId} - Read product")
-	fmt.Println("    GET  /v1/inventory/global/{productId} - Global availability")
-	fmt.Println("    GET  /v1/inventory - List products")
-	fmt.Println("    GET  /v1/replication/snapshot - Replication snapshot")
-	fmt.Println("    GET  /v1/replication/changes - Replication changes")
-	fmt.Println("  System:")
-	fmt.Println("    GET  /health - Health check (unversioned)")
-
-	log.Fatal(http.ListenAndServe(":"+port, r))
 }
