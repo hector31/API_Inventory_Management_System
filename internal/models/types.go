@@ -36,12 +36,6 @@ type ProductResponse struct {
 	LastUpdated string `json:"lastUpdated"`
 }
 
-type GlobalAvailabilityResponse struct {
-	ProductID      string         `json:"productId"`
-	TotalAvailable int            `json:"totalAvailable"`
-	PerStore       map[string]int `json:"perStore"`
-}
-
 type ListResponse struct {
 	Items      []ProductResponse `json:"items"`
 	NextCursor string            `json:"nextCursor"`
