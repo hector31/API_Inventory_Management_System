@@ -1,0 +1,78 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Documentation (except docs/ which we want to include)
+README.md
+*.md
+!docs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+server
+server.exe
+inventory-api
+
+# Test files and temporary files
+tests/load/temp_*.json
+tests/load/test_*.json
+*.tmp
+*.temp
+*.log
+
+# Environment files (security)
+.env.local
+.env.production
+.env.development
+*.key
+*.pem
+*.crt
+
+# Node modules (if any)
+node_modules/
+
+# Coverage reports
+*.out
+coverage.html
+
+# Vendor directory (if using vendor)
+vendor/
+
+# Docker files (don't include in build context)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Load testing results
+load_test_results.txt
+*.benchmark
+
+# Backup files
+*.bak
+*.backup

@@ -3,9 +3,9 @@
     "SKU-001": {
       "productId": "SKU-001",
       "name": "Smartphone Samsung Galaxy S24",
-      "available": 54,
-      "version": 25,
-      "lastUpdated": "2025-09-02T20:51:37Z"
+      "available": 44,
+      "version": 27,
+      "lastUpdated": "2025-09-02T22:25:31Z"
     },
     "SKU-002": {
       "productId": "SKU-002",
@@ -72,8 +72,8 @@
     }
   },
   "metadata": {
-    "lastOffset": 1321,
+    "lastOffset": 1323,
     "totalProducts": 10,
-    "lastUpdated": "2025-09-02T20:51:37Z"
+    "lastUpdated": "2025-09-02T22:25:31Z"
   }
 }

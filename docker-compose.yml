@@ -1,0 +1,80 @@
+services:
+  # Inventory Management API Service
+  inventory-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inventory-api
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      - PORT=8081
+      - LOG_LEVEL=info
+      - INVENTORY_WORKER_COUNT=4
+      - INVENTORY_QUEUE_BUFFER_SIZE=500
+      - ENABLE_JSON_PERSISTENCE=true
+      - DATA_PATH=./data/inventory_test_data.json
+      - CACHE_TTL_MINUTES=30
+      - CACHE_CLEANUP_INTERVAL_MINUTES=10
+    volumes:
+      - inventory_data:/app/data
+    networks:
+      - inventory_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - inventory_network
+    depends_on:
+      - inventory-api
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - inventory_network
+    depends_on:
+      - prometheus
+
+# Volumes for data persistence
+volumes:
+  inventory_data:
+  prometheus_data:
+  grafana_data:
+
+# Network
+networks:
+  inventory_network:
+    driver: bridge
