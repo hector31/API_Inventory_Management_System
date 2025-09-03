@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/melibackend/shared/utils"
 )
 
 // Config holds all configuration for the application
@@ -47,8 +48,8 @@ func LoadConfig() *Config {
 		EventsFilePath:                  getEnvWithDefault("EVENTS_FILE_PATH", "./data/events.json"),
 	}
 
-	// Configure slog based on log level
-	setupLogging(config.LogLevel)
+	// Configure slog based on log level using shared utils
+	utils.SetupLogging(config.LogLevel)
 
 	slog.Info("Configuration loaded",
 		"port", config.Port,
@@ -64,32 +65,6 @@ func LoadConfig() *Config {
 		"eventsFilePath", config.EventsFilePath)
 
 	return config
-}
-
-// setupLogging configures the slog handler based on log level
-func setupLogging(logLevel string) {
-	var level slog.Level
-
-	switch logLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		level = slog.LevelInfo
-	}
-
-	// Create a text handler with the specified log level
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	})
-
-	// Set the default logger
-	slog.SetDefault(slog.New(handler))
 }
 
 // getEnvWithDefault gets an environment variable with a default fallback
