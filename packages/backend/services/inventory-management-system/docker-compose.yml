@@ -1,13 +1,13 @@
 services:
-  # Central Inventory Management System
-  inventory-management-system:
+  # Inventory Management API Service
+  inventory-api:
     build:
-      context: ./packages/backend/services/inventory-management-system
+      context: .
       dockerfile: Dockerfile
-    container_name: inventory-management-system
+    container_name: inventory-api
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "8082:8081"
     environment:
       - PORT=8081
       - LOG_LEVEL=info
@@ -17,40 +17,12 @@ services:
       - DATA_PATH=./data/inventory_test_data.json
       - CACHE_TTL_MINUTES=30
       - CACHE_CLEANUP_INTERVAL_MINUTES=10
-      - API_KEYS=demo,central-api-key
     volumes:
       - inventory_data:/app/data
     networks:
-      - meli_network
+      - inventory_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Store S1 API
-  store-s1:
-    build:
-      context: ./packages/backend
-      dockerfile: ./services/store-s1/Dockerfile
-    container_name: store-s1
-    restart: unless-stopped
-    ports:
-      - "8083:8083"
-    environment:
-      - PORT=8083
-      - LOG_LEVEL=info
-      - ENVIRONMENT=development
-      - API_KEYS=store-s1-key,demo
-      - CENTRAL_API_URL=http://inventory-management-system:8081
-      - CENTRAL_API_KEY=demo
-    networks:
-      - meli_network
-    depends_on:
-      - inventory-management-system
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -71,12 +43,12 @@ services:
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
     volumes:
-      - ./packages/backend/services/inventory-management-system/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     networks:
-      - meli_network
+      - inventory_network
     depends_on:
-      - inventory-management-system
+      - inventory-api
 
   # Grafana for visualization
   grafana:
@@ -84,7 +56,7 @@ services:
     container_name: grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
@@ -92,7 +64,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
     networks:
-      - meli_network
+      - inventory_network
     depends_on:
       - prometheus
 
@@ -104,5 +76,5 @@ volumes:
 
 # Network
 networks:
-  meli_network:
+  inventory_network:
     driver: bridge
