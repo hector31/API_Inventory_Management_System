@@ -18,6 +18,8 @@ services:
       - CACHE_TTL_MINUTES=30
       - CACHE_CLEANUP_INTERVAL_MINUTES=10
       - API_KEYS=demo,central-api-key
+      - MAX_EVENTS_IN_QUEUE=10000
+      - EVENTS_FILE_PATH=./data/events.json
     volumes:
       - inventory_data:/app/data
     networks:

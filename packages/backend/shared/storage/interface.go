@@ -35,20 +35,20 @@ type LocalStorage interface {
 
 // StorageStats provides information about the local storage
 type StorageStats struct {
-	ProductCount    int       `json:"productCount"`
-	LastSyncTime    time.Time `json:"lastSyncTime"`
-	StorageSize     int64     `json:"storageSize"`
-	MemoryUsage     int64     `json:"memoryUsage"`
-	InitializedAt   time.Time `json:"initializedAt"`
-	LastUpdateTime  time.Time `json:"lastUpdateTime"`
+	ProductCount   int       `json:"productCount"`
+	LastSyncTime   time.Time `json:"lastSyncTime"`
+	StorageSize    int64     `json:"storageSize"`
+	MemoryUsage    int64     `json:"memoryUsage"`
+	InitializedAt  time.Time `json:"initializedAt"`
+	LastUpdateTime time.Time `json:"lastUpdateTime"`
 }
 
 // SyncStatus represents the synchronization status
 type SyncStatus struct {
-	InProgress      bool      `json:"inProgress"`
-	LastSyncTime    time.Time `json:"lastSyncTime"`
-	LastSyncSuccess bool      `json:"lastSyncSuccess"`
-	ProductCount    int       `json:"productCount"`
+	InProgress      bool          `json:"inProgress"`
+	LastSyncTime    time.Time     `json:"lastSyncTime"`
+	LastSyncSuccess bool          `json:"lastSyncSuccess"`
+	ProductCount    int           `json:"productCount"`
 	SyncDuration    time.Duration `json:"syncDuration"`
-	ErrorMessage    string    `json:"errorMessage,omitempty"`
+	ErrorMessage    string        `json:"errorMessage,omitempty"`
 }

@@ -42,18 +42,21 @@ type UpdateResponse struct {
 	LastUpdated string `json:"lastUpdated,omitempty"`
 
 	// Batch response fields
-	Results []ProductUpdateResult `json:"results,omitempty"`
-	Summary *BatchSummary         `json:"summary,omitempty"`
+	Results      []ProductUpdateResult `json:"results,omitempty"`
+	Summary      *BatchSummary         `json:"summary,omitempty"`
+	ErrorType    string                `json:"errorType,omitempty"`
+	ErrorMessage string                `json:"errorMessage,omitempty"`
 }
 
 // ProductUpdateResult represents the result of a single product update in a batch
 type ProductUpdateResult struct {
-	ProductID   string `json:"productId"`
-	NewQuantity int    `json:"newQuantity"`
-	NewVersion  int    `json:"newVersion"`
-	Applied     bool   `json:"applied"`
-	LastUpdated string `json:"lastUpdated"`
-	Error       string `json:"error,omitempty"`
+	ProductID    string `json:"productId"`
+	NewQuantity  int    `json:"newQuantity"`
+	NewVersion   int    `json:"newVersion"`
+	Applied      bool   `json:"applied"`
+	LastUpdated  string `json:"lastUpdated"`
+	ErrorType    string `json:"errorType,omitempty"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
 // BatchSummary provides summary statistics for batch operations
@@ -74,3 +77,27 @@ type ListResponse struct {
 	Items      []ProductResponse `json:"items"`
 	NextCursor string            `json:"nextCursor"`
 }
+
+// Event represents a change event in the inventory system
+type Event struct {
+	Offset    int64           `json:"offset"`
+	Timestamp string          `json:"timestamp"`
+	EventType string          `json:"eventType"`
+	ProductID string          `json:"productId"`
+	Data      ProductResponse `json:"data"`
+	Version   int             `json:"version"`
+}
+
+// EventsResponse represents the response for the events endpoint
+type EventsResponse struct {
+	Events     []Event `json:"events"`
+	NextOffset int64   `json:"nextOffset"`
+	HasMore    bool    `json:"hasMore"`
+	Count      int     `json:"count"`
+}
+
+// EventType constants
+const (
+	EventTypeProductUpdated = "product_updated"
+	EventTypeProductCreated = "product_created"
+)

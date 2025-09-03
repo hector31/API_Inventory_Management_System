@@ -18,6 +18,8 @@ type Config struct {
 	EnableJSONPersistence           string
 	InventoryWorkerCount            string
 	InventoryQueueBufferSize        string
+	MaxEventsInQueue                string
+	EventsFilePath                  string
 }
 
 // LoadConfig loads configuration from .env file and environment variables
@@ -41,6 +43,8 @@ func LoadConfig() *Config {
 		EnableJSONPersistence:           getEnvWithDefault("ENABLE_JSON_PERSISTENCE", "true"),
 		InventoryWorkerCount:            getEnvWithDefault("INVENTORY_WORKER_COUNT", "1"),
 		InventoryQueueBufferSize:        getEnvWithDefault("INVENTORY_QUEUE_BUFFER_SIZE", "100"),
+		MaxEventsInQueue:                getEnvWithDefault("MAX_EVENTS_IN_QUEUE", "10000"),
+		EventsFilePath:                  getEnvWithDefault("EVENTS_FILE_PATH", "./data/events.json"),
 	}
 
 	// Configure slog based on log level
@@ -55,7 +59,9 @@ func LoadConfig() *Config {
 		"idempotencyCacheCleanupInterval", config.IdempotencyCacheCleanupInterval,
 		"enableJSONPersistence", config.EnableJSONPersistence,
 		"inventoryWorkerCount", config.InventoryWorkerCount,
-		"inventoryQueueBufferSize", config.InventoryQueueBufferSize)
+		"inventoryQueueBufferSize", config.InventoryQueueBufferSize,
+		"maxEventsInQueue", config.MaxEventsInQueue,
+		"eventsFilePath", config.EventsFilePath)
 
 	return config
 }

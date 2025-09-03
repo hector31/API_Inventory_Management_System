@@ -12,6 +12,7 @@ import (
 
 	"inventory-management-api/internal/cache"
 	"inventory-management-api/internal/config"
+	"inventory-management-api/internal/events"
 	"inventory-management-api/internal/models"
 )
 
@@ -28,6 +29,7 @@ type InventoryService struct {
 	queueBufferSize       int
 	stopWorkers           chan bool
 	workersWaitGroup      sync.WaitGroup
+	eventQueue            *events.EventQueue
 }
 
 // UpdateRequest represents an internal update request for queue processing
@@ -42,12 +44,13 @@ type UpdateRequest struct {
 
 // UpdateResult represents the result of an update operation
 type UpdateResult struct {
-	Success     bool
-	NewQuantity int
-	NewVersion  int
-	Error       error
-	Applied     bool
-	LastUpdated string
+	Success      bool
+	NewQuantity  int
+	NewVersion   int
+	ErrorType    string
+	ErrorMessage string
+	Applied      bool
+	LastUpdated  string
 }
 
 // InventoryData represents the complete inventory data structure
@@ -71,6 +74,20 @@ type MetadataData struct {
 	TotalProducts int    `json:"totalProducts"` // Quick count of total products
 	LastUpdated   string `json:"lastUpdated"`   // System-wide last update timestamp
 }
+
+const (
+	// Error types
+	ErrTypeProductNotFound       = "product_not_found"
+	ErrTypeVersionConflict       = "version_conflict"
+	ErrTypeInvalidRequest        = "invalid_request"
+	ErrTypeInvalidDelta          = "invalid_delta"
+	ErrTypeInsufficientInventory = "insufficient_inventory"
+	ErrTypeTimeout               = "timeout"
+	ErrTypeInternalError         = "internal_error"
+	ErrTypeUnknown               = "unknown_error"
+	ErrTypeInvalidIdempotencyKey = "invalid_idempotency_key"
+	ErrTypeMissingProductID      = "missing_product_id"
+)
 
 // NewInventoryService creates a new inventory service instance
 func NewInventoryService(cfg *config.Config) (*InventoryService, error) {
@@ -276,9 +293,35 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 	for {
 		select {
 		case updateReq := <-s.updateQueue:
-			result := s.processUpdateInternal(updateReq)
+			// Process update with timeout protection
+			resultChan := make(chan *UpdateResult, 1)
+			go func() {
+				result := s.processUpdateInternal(updateReq)
+				resultChan <- result
+			}()
 
-			// Send result back through response channel
+			var result *UpdateResult
+			select {
+			case result = <-resultChan:
+				// Update completed successfully
+			case <-time.After(15 * time.Second):
+				// Update processing timed out
+				slog.Error("Update processing timed out",
+					"worker_id", workerID,
+					"product_id", updateReq.ProductID,
+					"idempotency_key", updateReq.IdempotencyKey)
+				result = &UpdateResult{
+					Success:      false,
+					ErrorType:    ErrTypeTimeout,
+					ErrorMessage: "update processing timed out",
+					Applied:      false,
+					NewQuantity:  0,
+					NewVersion:   0,
+					LastUpdated:  "",
+				}
+			}
+
+			// Send result back through response channel with timeout
 			select {
 			case updateReq.ResponseChan <- result:
 				// Successfully sent response
@@ -286,7 +329,7 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 					"worker_id", workerID,
 					"product_id", updateReq.ProductID,
 					"applied", result.Applied)
-			case <-time.After(5 * time.Second):
+			case <-time.After(2 * time.Second):
 				slog.Error("Timeout sending update result",
 					"worker_id", workerID,
 					"product_id", updateReq.ProductID,
@@ -296,6 +339,82 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 			slog.Debug("Stopping inventory update worker", "worker_id", workerID)
 			return
 		}
+	}
+}
+
+// SetEventQueue sets the event queue for publishing events and synchronizes metadata
+func (s *InventoryService) SetEventQueue(eventQueue *events.EventQueue) {
+	s.eventQueue = eventQueue
+
+	// Synchronize metadata with event queue's current offset for perfect consistency
+	s.globalMutex.Lock()
+	currentOffset := eventQueue.GetCurrentOffset()
+
+	slog.Debug("SetEventQueue synchronization check",
+		"db_offset", s.data.Metadata.LastOffset,
+		"queue_offset", currentOffset)
+
+	// If the database metadata has a higher offset than the event queue,
+	// it means the event queue was reset but the database wasn't.
+	// In this case, we should use the database's offset as the starting point.
+	if s.data.Metadata.LastOffset > int(currentOffset) {
+		slog.Warn("Database metadata offset is higher than event queue offset",
+			"db_offset", s.data.Metadata.LastOffset,
+			"queue_offset", currentOffset,
+			"action", "keeping_database_offset")
+		if int(currentOffset) == 0 {
+			slog.Info("Event queue offset is 0, resetting database offset for consistency")
+			// Reset database offset directly since we already have the mutex
+			s.resetDatabaseOffsetInternal("file_not_exist")
+		}
+	} else {
+		// Update database metadata to match event queue offset
+		s.data.Metadata.LastOffset = int(currentOffset)
+		slog.Info("Synchronized database metadata with event queue offset",
+			"offset", currentOffset)
+	}
+	s.globalMutex.Unlock()
+}
+
+// ResetDatabaseOffset resets the database offset to 0 to maintain consistency with event queue reset
+func (s *InventoryService) ResetDatabaseOffset() {
+	s.ResetDatabaseOffsetWithReason("event_queue_reset")
+}
+
+// ResetDatabaseOffsetWithReason resets the database offset to 0 with a specific reason
+func (s *InventoryService) ResetDatabaseOffsetWithReason(reason string) {
+	// Use a goroutine to avoid potential deadlock when called from within a locked context
+	go func() {
+		s.globalMutex.Lock()
+		defer s.globalMutex.Unlock()
+		s.resetDatabaseOffsetInternal(reason)
+	}()
+}
+
+// resetDatabaseOffsetInternal performs the actual reset without acquiring mutex (internal use only)
+func (s *InventoryService) resetDatabaseOffsetInternal(reason string) {
+	oldOffset := s.data.Metadata.LastOffset
+	s.data.Metadata.LastOffset = 0
+	s.data.Metadata.LastUpdated = time.Now().UTC().Format(time.RFC3339)
+
+	var logMessage string
+	switch reason {
+	case "file_not_exist":
+		logMessage = "Database offset reset to maintain consistency - events file doesn't exist, starting fresh"
+	case "file_load_failure":
+		logMessage = "Database offset reset to maintain consistency - events file corrupted or invalid"
+	default:
+		logMessage = "Database offset reset to maintain consistency with event queue"
+	}
+
+	slog.Info(logMessage,
+		"old_offset", oldOffset,
+		"new_offset", 0,
+		"reason", reason)
+
+	// Persist the reset offset to file if persistence is enabled
+	if err := s.saveDataToFileInternal(); err != nil {
+		slog.Error("Failed to persist database offset reset to file", "error", err, "reason", reason)
 	}
 }
 
@@ -325,9 +444,13 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		productData, exists := s.data.Products[req.ProductID]
 		if !exists {
 			result = &UpdateResult{
-				Success: false,
-				Error:   fmt.Errorf("product not found: %s", req.ProductID),
-				Applied: false,
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("product not found: %s", req.ProductID),
+				ErrorType:    ErrTypeProductNotFound,
+				Applied:      false,
+				NewQuantity:  0,
+				NewVersion:   0,
+				LastUpdated:  "",
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 			return
@@ -336,9 +459,13 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		// Check version for OCC
 		if productData.Version != req.Version {
 			result = &UpdateResult{
-				Success: false,
-				Error:   fmt.Errorf("version conflict: expected %d, got %d", productData.Version, req.Version),
-				Applied: false,
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("version conflict: expected %d, got %d", productData.Version, req.Version),
+				ErrorType:    ErrTypeVersionConflict,
+				Applied:      false,
+				NewQuantity:  productData.Available, // Return current quantity
+				NewVersion:   productData.Version,   // Return current version
+				LastUpdated:  productData.LastUpdated,
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 
@@ -351,13 +478,26 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 			return
 		}
 
+		// stores only negative quantities
+		if req.Delta > 0 {
+			result = &UpdateResult{
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("invalid delta: %d - only negative quantities are allowed", req.Delta),
+				ErrorType:    ErrTypeInvalidRequest,
+				Applied:      false,
+			}
+			s.cacheIdempotencyResult(req.IdempotencyKey, result)
+			return
+		}
+
 		// Calculate new quantity
 		newQuantity := productData.Available + req.Delta
 		if newQuantity < 0 {
 			result = &UpdateResult{
-				Success: false,
-				Error:   fmt.Errorf("insufficient inventory: current %d, delta %d", productData.Available, req.Delta),
-				Applied: false,
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("insufficient inventory: current %d, delta %d", productData.Available, req.Delta),
+				ErrorType:    ErrTypeInsufficientInventory,
+				Applied:      false,
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 			return
@@ -398,6 +538,39 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 			"delta", req.Delta,
 			"idempotency_key", req.IdempotencyKey)
 	})
+
+	// Publish event if update was successful and event queue is available
+	// Do this asynchronously to prevent blocking the response
+	if result.Success && s.eventQueue != nil {
+		go func() {
+			eventData := models.ProductResponse{
+				ProductID:   req.ProductID,
+				Available:   result.NewQuantity,
+				Version:     result.NewVersion,
+				LastUpdated: result.LastUpdated,
+			}
+
+			s.eventQueue.PublishEvent(
+				models.EventTypeProductUpdated,
+				req.ProductID,
+				eventData,
+				result.NewVersion,
+			)
+
+			// Update metadata with current event offset for snapshot synchronization
+			s.globalMutex.Lock()
+			currentOffset := s.eventQueue.GetCurrentOffset()
+			s.data.Metadata.LastOffset = int(currentOffset)
+			s.data.Metadata.LastUpdated = result.LastUpdated
+			s.globalMutex.Unlock()
+
+			slog.Debug("Event published for inventory update",
+				"product_id", req.ProductID,
+				"event_type", models.EventTypeProductUpdated,
+				"new_version", result.NewVersion,
+				"current_offset", currentOffset)
+		}()
+	}
 
 	// Persist changes to JSON file if enabled (outside of product lock)
 	if result.Success {
@@ -457,6 +630,48 @@ func (s *InventoryService) saveDataToFile() error {
 	}
 
 	slog.Info("Inventory data saved to file successfully",
+		"path", s.dataFilePath,
+		"products_count", productsCount,
+		"last_offset", lastOffset)
+
+	return nil
+}
+
+// saveDataToFileInternal saves data to file without acquiring mutex (internal use only)
+func (s *InventoryService) saveDataToFileInternal() error {
+	if !s.enableJSONPersistence {
+		slog.Debug("JSON persistence disabled, skipping file save")
+		return nil
+	}
+
+	slog.Debug("Saving inventory data to file (internal)", "path", s.dataFilePath)
+
+	// Marshal the data to JSON with indentation for readability
+	// Note: No mutex needed here as this is called from within a locked context
+	jsonData, err := json.MarshalIndent(s.data, "", "  ")
+	productsCount := len(s.data.Products)
+	lastOffset := s.data.Metadata.LastOffset
+
+	if err != nil {
+		return fmt.Errorf("error marshaling inventory data: %w", err)
+	}
+
+	// Write to file atomically by writing to a temp file first
+	tempFilePath := s.dataFilePath + ".tmp"
+	err = os.WriteFile(tempFilePath, jsonData, 0644)
+	if err != nil {
+		return fmt.Errorf("error writing temp file: %w", err)
+	}
+
+	// Atomically replace the original file
+	err = os.Rename(tempFilePath, s.dataFilePath)
+	if err != nil {
+		// Clean up temp file if rename fails
+		os.Remove(tempFilePath)
+		return fmt.Errorf("error replacing original file: %w", err)
+	}
+
+	slog.Info("Inventory data saved to file successfully (internal)",
 		"path", s.dataFilePath,
 		"products_count", productsCount,
 		"last_offset", lastOffset)
@@ -524,11 +739,15 @@ func (s *InventoryService) UpdateInventory(productID string, delta, version int,
 		return nil, fmt.Errorf("timeout submitting update to queue")
 	}
 
-	// Wait for result
+	// Wait for result with extended timeout to account for file I/O
 	select {
 	case result := <-responseChan:
 		return result, nil
-	case <-time.After(10 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for update result")
+	case <-time.After(20 * time.Second):
+		slog.Error("Timeout waiting for update result",
+			"product_id", productID,
+			"idempotency_key", idempotencyKey,
+			"timeout", "20s")
+		return nil, fmt.Errorf("timeout waiting for update result after 20 seconds")
 	}
 }
