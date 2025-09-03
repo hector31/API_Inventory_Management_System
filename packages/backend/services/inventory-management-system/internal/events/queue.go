@@ -14,16 +14,17 @@ import (
 
 // EventQueue manages the event queue with file persistence
 type EventQueue struct {
-	mu           sync.RWMutex
-	events       []models.Event
-	nextOffset   int64
-	filePath     string
-	maxEvents    int
-	logger       *slog.Logger
-	writeChan    chan models.Event
-	stopChan     chan struct{}
-	waiters      map[int64][]chan struct{}
-	waitersMutex sync.RWMutex
+	mu            sync.RWMutex
+	events        []models.Event
+	nextOffset    int64
+	filePath      string
+	maxEvents     int
+	logger        *slog.Logger
+	writeChan     chan models.Event
+	stopChan      chan struct{}
+	waiters       map[int64][]chan struct{}
+	waitersMutex  sync.RWMutex
+	resetCallback func(reason string) // Callback to notify when queue is reset due to file load failure
 }
 
 // EventQueueConfig holds configuration for the event queue
@@ -54,6 +55,14 @@ func NewEventQueue(config EventQueueConfig) (*EventQueue, error) {
 	if err := eq.loadFromFile(); err != nil {
 		eq.logger.Warn("Failed to load events from file, starting fresh", "error", err)
 		eq.nextOffset = 0
+
+		// Call reset callback if set to notify that the queue was reset due to file corruption
+		// This allows the inventory service to reset its database offset to maintain consistency
+		if eq.resetCallback != nil {
+			eq.logger.Info("Calling reset callback to synchronize database offset with event queue reset",
+				"reason", "file_load_failure")
+			eq.resetCallback("file_load_failure")
+		}
 	}
 
 	// Start async writer goroutine
@@ -67,6 +76,38 @@ func NewEventQueue(config EventQueueConfig) (*EventQueue, error) {
 	)
 
 	return eq, nil
+}
+
+// SetResetCallback sets a callback function that will be called when the event queue is reset due to file load failure
+func (eq *EventQueue) SetResetCallback(callback func(reason string)) {
+	eq.mu.Lock()
+	defer eq.mu.Unlock()
+	eq.resetCallback = callback
+
+	// After setting the callback, check if we need to trigger it for missing file scenario
+	eq.checkForMissingFileReset()
+}
+
+// checkForMissingFileReset checks if the event queue started fresh due to missing file and triggers callback
+func (eq *EventQueue) checkForMissingFileReset() {
+	// Use read lock to safely access events and nextOffset
+	eq.mu.RLock()
+	eventsCount := len(eq.events)
+	currentOffset := eq.nextOffset
+	eq.mu.RUnlock()
+
+	// Only check if we have no events and offset is 0 (fresh start)
+	if eventsCount == 0 && currentOffset == 0 {
+		// Check if the events file doesn't exist
+		if _, err := os.Stat(eq.filePath); os.IsNotExist(err) {
+			// Call reset callback to ensure database offset is also reset to 0
+			if eq.resetCallback != nil {
+				eq.logger.Info("Calling reset callback to synchronize database offset with fresh event queue start",
+					"reason", "file_not_exist")
+				eq.resetCallback("file_not_exist")
+			}
+		}
+	}
 }
 
 // PublishEvent adds a new event to the queue

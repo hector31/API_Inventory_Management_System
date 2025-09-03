@@ -350,6 +350,10 @@ func (s *InventoryService) SetEventQueue(eventQueue *events.EventQueue) {
 	s.globalMutex.Lock()
 	currentOffset := eventQueue.GetCurrentOffset()
 
+	slog.Debug("SetEventQueue synchronization check",
+		"db_offset", s.data.Metadata.LastOffset,
+		"queue_offset", currentOffset)
+
 	// If the database metadata has a higher offset than the event queue,
 	// it means the event queue was reset but the database wasn't.
 	// In this case, we should use the database's offset as the starting point.
@@ -358,6 +362,11 @@ func (s *InventoryService) SetEventQueue(eventQueue *events.EventQueue) {
 			"db_offset", s.data.Metadata.LastOffset,
 			"queue_offset", currentOffset,
 			"action", "keeping_database_offset")
+		if int(currentOffset) == 0 {
+			slog.Info("Event queue offset is 0, resetting database offset for consistency")
+			// Reset database offset directly since we already have the mutex
+			s.resetDatabaseOffsetInternal("file_not_exist")
+		}
 	} else {
 		// Update database metadata to match event queue offset
 		s.data.Metadata.LastOffset = int(currentOffset)
@@ -365,6 +374,48 @@ func (s *InventoryService) SetEventQueue(eventQueue *events.EventQueue) {
 			"offset", currentOffset)
 	}
 	s.globalMutex.Unlock()
+}
+
+// ResetDatabaseOffset resets the database offset to 0 to maintain consistency with event queue reset
+func (s *InventoryService) ResetDatabaseOffset() {
+	s.ResetDatabaseOffsetWithReason("event_queue_reset")
+}
+
+// ResetDatabaseOffsetWithReason resets the database offset to 0 with a specific reason
+func (s *InventoryService) ResetDatabaseOffsetWithReason(reason string) {
+	// Use a goroutine to avoid potential deadlock when called from within a locked context
+	go func() {
+		s.globalMutex.Lock()
+		defer s.globalMutex.Unlock()
+		s.resetDatabaseOffsetInternal(reason)
+	}()
+}
+
+// resetDatabaseOffsetInternal performs the actual reset without acquiring mutex (internal use only)
+func (s *InventoryService) resetDatabaseOffsetInternal(reason string) {
+	oldOffset := s.data.Metadata.LastOffset
+	s.data.Metadata.LastOffset = 0
+	s.data.Metadata.LastUpdated = time.Now().UTC().Format(time.RFC3339)
+
+	var logMessage string
+	switch reason {
+	case "file_not_exist":
+		logMessage = "Database offset reset to maintain consistency - events file doesn't exist, starting fresh"
+	case "file_load_failure":
+		logMessage = "Database offset reset to maintain consistency - events file corrupted or invalid"
+	default:
+		logMessage = "Database offset reset to maintain consistency with event queue"
+	}
+
+	slog.Info(logMessage,
+		"old_offset", oldOffset,
+		"new_offset", 0,
+		"reason", reason)
+
+	// Persist the reset offset to file if persistence is enabled
+	if err := s.saveDataToFileInternal(); err != nil {
+		slog.Error("Failed to persist database offset reset to file", "error", err, "reason", reason)
+	}
 }
 
 // processUpdateInternal handles the actual update logic with OCC and idempotency
@@ -579,6 +630,48 @@ func (s *InventoryService) saveDataToFile() error {
 	}
 
 	slog.Info("Inventory data saved to file successfully",
+		"path", s.dataFilePath,
+		"products_count", productsCount,
+		"last_offset", lastOffset)
+
+	return nil
+}
+
+// saveDataToFileInternal saves data to file without acquiring mutex (internal use only)
+func (s *InventoryService) saveDataToFileInternal() error {
+	if !s.enableJSONPersistence {
+		slog.Debug("JSON persistence disabled, skipping file save")
+		return nil
+	}
+
+	slog.Debug("Saving inventory data to file (internal)", "path", s.dataFilePath)
+
+	// Marshal the data to JSON with indentation for readability
+	// Note: No mutex needed here as this is called from within a locked context
+	jsonData, err := json.MarshalIndent(s.data, "", "  ")
+	productsCount := len(s.data.Products)
+	lastOffset := s.data.Metadata.LastOffset
+
+	if err != nil {
+		return fmt.Errorf("error marshaling inventory data: %w", err)
+	}
+
+	// Write to file atomically by writing to a temp file first
+	tempFilePath := s.dataFilePath + ".tmp"
+	err = os.WriteFile(tempFilePath, jsonData, 0644)
+	if err != nil {
+		return fmt.Errorf("error writing temp file: %w", err)
+	}
+
+	// Atomically replace the original file
+	err = os.Rename(tempFilePath, s.dataFilePath)
+	if err != nil {
+		// Clean up temp file if rename fails
+		os.Remove(tempFilePath)
+		return fmt.Errorf("error replacing original file: %w", err)
+	}
+
+	slog.Info("Inventory data saved to file successfully (internal)",
 		"path", s.dataFilePath,
 		"products_count", productsCount,
 		"last_offset", lastOffset)
