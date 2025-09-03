@@ -98,6 +98,8 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 		slog.Warn("Missing product ID in single update")
 		return models.UpdateResponse{
 			ProductID: req.ProductID,
+			ErrorType:    services.ErrTypeMissingProductID,
+			ErrorMessage: "Missing product ID",
 			Applied:   false,
 		}
 	}
@@ -106,6 +108,8 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 		slog.Warn("Missing idempotency key in single update", "product_id", req.ProductID)
 		return models.UpdateResponse{
 			ProductID: req.ProductID,
+			ErrorType:    services.ErrTypeInvalidRequest,
+			ErrorMessage: "Missing idempotency key",
 			Applied:   false,
 		}
 	}
@@ -124,17 +128,24 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 			"product_id", req.ProductID,
 			"error", err)
 		return models.UpdateResponse{
-			ProductID: req.ProductID,
-			Applied:   false,
+			ProductID:   req.ProductID,
+			Applied:     false,
+			NewQuantity: 0,
+			NewVersion:  0,
+			ErrorType:    services.ErrTypeInternalError,
+			ErrorMessage: err.Error(),
+			LastUpdated: "",
 		}
 	}
 
 	response := models.UpdateResponse{
-		ProductID:   req.ProductID,
-		NewQuantity: result.NewQuantity,
-		NewVersion:  result.NewVersion,
-		Applied:     result.Applied,
-		LastUpdated: result.LastUpdated,
+		ProductID:    req.ProductID,
+		NewQuantity:  result.NewQuantity,
+		NewVersion:   result.NewVersion,
+		Applied:      result.Applied,
+		LastUpdated:  result.LastUpdated,
+		ErrorType:    result.ErrorType,
+		ErrorMessage: result.ErrorMessage,
 	}
 
 	if result.Success {
@@ -147,7 +158,8 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 	} else {
 		slog.Warn("Single update failed",
 			"product_id", req.ProductID,
-			"error", result.Error,
+			"error_type", result.ErrorType,
+			"error_message", result.ErrorMessage,
 			"idempotency_key", req.IdempotencyKey)
 	}
 
@@ -164,9 +176,10 @@ func (h *InventoryHandler) processBatchUpdate(req models.UpdateRequest) models.U
 		if update.ProductID == "" {
 			slog.Warn("Missing product ID in batch update item")
 			results = append(results, models.ProductUpdateResult{
-				ProductID: update.ProductID,
-				Applied:   false,
-				Error:     "Missing product ID",
+				ProductID:    update.ProductID,
+				Applied:      false,
+				ErrorType:    services.ErrTypeMissingProductID,
+				ErrorMessage: "Missing product ID",
 			})
 			failed++
 			continue
@@ -175,9 +188,10 @@ func (h *InventoryHandler) processBatchUpdate(req models.UpdateRequest) models.U
 		if update.IdempotencyKey == "" {
 			slog.Warn("Missing idempotency key in batch update item", "product_id", update.ProductID)
 			results = append(results, models.ProductUpdateResult{
-				ProductID: update.ProductID,
-				Applied:   false,
-				Error:     "Missing idempotency key",
+				ProductID:    update.ProductID,
+				Applied:      false,
+				ErrorType:    services.ErrTypeInvalidRequest,
+				ErrorMessage: "Missing idempotency key",
 			})
 			failed++
 			continue
@@ -198,19 +212,21 @@ func (h *InventoryHandler) processBatchUpdate(req models.UpdateRequest) models.U
 				"product_id", update.ProductID,
 				"error", err)
 			result = models.ProductUpdateResult{
-				ProductID: update.ProductID,
-				Applied:   false,
-				Error:     err.Error(),
+				ProductID:    update.ProductID,
+				Applied:      false,
+				ErrorType:    services.ErrTypeInternalError,
+				ErrorMessage: err.Error(),
 			}
 			failed++
 		} else if !serviceResult.Success {
 			result = models.ProductUpdateResult{
-				ProductID:   update.ProductID,
-				NewQuantity: serviceResult.NewQuantity,
-				NewVersion:  serviceResult.NewVersion,
-				Applied:     false,
-				LastUpdated: serviceResult.LastUpdated,
-				Error:       serviceResult.Error.Error(),
+				ProductID:    update.ProductID,
+				NewQuantity:  serviceResult.NewQuantity,
+				NewVersion:   serviceResult.NewVersion,
+				Applied:      false,
+				LastUpdated:  serviceResult.LastUpdated,
+				ErrorType:    serviceResult.ErrorType,
+				ErrorMessage: serviceResult.ErrorMessage,
 			}
 			failed++
 		} else {
@@ -444,12 +460,20 @@ func (h *InventoryHandler) handleRegularListing(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Standard response format
+	// Standard response format with event offset for synchronization
+	metadata := h.inventoryService.GetSystemMetadata()
+	standardResponse := map[string]interface{}{
+		"items":       productList.Items,
+		"nextCursor":  productList.NextCursor,
+		"eventOffset": metadata.LastOffset, // Current event offset for synchronization
+	}
+
 	slog.Info("Products listed successfully",
 		"cursor", cursor,
 		"limit", limit,
 		"found_count", len(productList.Items),
+		"event_offset", metadata.LastOffset,
 		"remote_addr", r.RemoteAddr)
 
-	writeJSONResponse(w, http.StatusOK, productList)
+	writeJSONResponse(w, http.StatusOK, standardResponse)
 }
