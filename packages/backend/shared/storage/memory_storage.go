@@ -14,19 +14,21 @@ import (
 
 // MemoryStorage implements LocalStorage using in-memory storage with file persistence
 type MemoryStorage struct {
-	mu            sync.RWMutex
-	products      map[string]models.Product
-	lastSyncTime  time.Time
-	initializedAt time.Time
-	dataFile      string
-	metaFile      string
+	mu              sync.RWMutex
+	products        map[string]models.Product
+	lastSyncTime    time.Time
+	lastEventOffset int64
+	initializedAt   time.Time
+	dataFile        string
+	metaFile        string
 }
 
 // StorageMetadata holds metadata about the storage
 type StorageMetadata struct {
-	LastSyncTime  time.Time `json:"lastSyncTime"`
-	InitializedAt time.Time `json:"initializedAt"`
-	ProductCount  int       `json:"productCount"`
+	LastSyncTime    time.Time `json:"lastSyncTime"`
+	LastEventOffset int64     `json:"lastEventOffset"`
+	InitializedAt   time.Time `json:"initializedAt"`
+	ProductCount    int       `json:"productCount"`
 }
 
 // NewMemoryStorage creates a new in-memory storage instance
@@ -101,6 +103,73 @@ func (ms *MemoryStorage) SetLastSyncTime(t time.Time) error {
 
 	ms.lastSyncTime = t
 	return ms.saveMetadata()
+}
+
+// GetLastEventOffset returns the last processed event offset by reading from the metadata file
+func (ms *MemoryStorage) GetLastEventOffset() (int64, error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Always read from the metadata file to get the most current value
+	if data, err := os.ReadFile(ms.metaFile); err == nil {
+		var meta StorageMetadata
+		if err := json.Unmarshal(data, &meta); err == nil {
+			// Update the in-memory variable with the value from file
+			ms.lastEventOffset = meta.LastEventOffset
+			return meta.LastEventOffset, nil
+		}
+	}
+
+	// If file doesn't exist or can't be read, return the in-memory value (fallback)
+	return ms.lastEventOffset, nil
+}
+
+// SetLastEventOffset sets the last processed event offset
+func (ms *MemoryStorage) SetLastEventOffset(offset int64) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	ms.lastEventOffset = offset
+	return ms.saveMetadata()
+}
+
+// ApplyEvents applies a batch of events to the local storage
+func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	for _, event := range events {
+		// Convert ProductResponse to Product
+		product := models.Product{
+			ProductID: event.Data.ProductID,
+			Available: event.Data.Available,
+			Version:   event.Data.Version,
+		}
+
+		// Parse the timestamp
+		if lastUpdated, err := time.Parse(time.RFC3339, event.Data.LastUpdated); err == nil {
+			product.LastUpdated = lastUpdated
+		} else {
+			product.LastUpdated = time.Now()
+		}
+
+		// Apply the event based on type
+		switch event.EventType {
+		case models.EventTypeProductUpdated, models.EventTypeProductCreated:
+			ms.products[event.ProductID] = product
+		default:
+			// Unknown event type, log but continue
+			continue
+		}
+
+		// Update the last processed offset
+		if event.Offset >= ms.lastEventOffset {
+			ms.lastEventOffset = event.Offset + 1
+		}
+	}
+
+	// Save to file after applying all events
+	return ms.saveToFile()
 }
 
 // GetProduct retrieves a single product by ID
@@ -216,6 +285,7 @@ func (ms *MemoryStorage) loadFromFile() error {
 		var meta StorageMetadata
 		if err := json.Unmarshal(data, &meta); err == nil {
 			ms.lastSyncTime = meta.LastSyncTime
+			ms.lastEventOffset = meta.LastEventOffset
 			ms.initializedAt = meta.InitializedAt
 		}
 	}
@@ -242,9 +312,10 @@ func (ms *MemoryStorage) saveToFile() error {
 // saveMetadata saves only the metadata
 func (ms *MemoryStorage) saveMetadata() error {
 	meta := StorageMetadata{
-		LastSyncTime:  ms.lastSyncTime,
-		InitializedAt: ms.initializedAt,
-		ProductCount:  len(ms.products),
+		LastSyncTime:    ms.lastSyncTime,
+		LastEventOffset: ms.lastEventOffset,
+		InitializedAt:   ms.initializedAt,
+		ProductCount:    len(ms.products),
 	}
 
 	data, err := json.MarshalIndent(meta, "", "  ")

@@ -37,11 +37,11 @@ type UpdateResponse struct {
 
 // BatchUpdateResponse represents the response for a batch update
 type BatchUpdateResponse struct {
-	StoreID     string           `json:"storeId"`
-	Results     []UpdateResponse `json:"results"`
-	TotalCount  int              `json:"totalCount"`
-	SuccessCount int             `json:"successCount"`
-	FailureCount int             `json:"failureCount"`
+	StoreID      string           `json:"storeId"`
+	Results      []UpdateResponse `json:"results"`
+	TotalCount   int              `json:"totalCount"`
+	SuccessCount int              `json:"successCount"`
+	FailureCount int              `json:"failureCount"`
 }
 
 // ErrorResponse represents an error response
@@ -53,9 +53,9 @@ type ErrorResponse struct {
 
 // HealthResponse represents a health check response
 type HealthResponse struct {
-	Status string `json:"status"`
-	Service string `json:"service,omitempty"`
-	Version string `json:"version,omitempty"`
+	Status    string    `json:"status"`
+	Service   string    `json:"service,omitempty"`
+	Version   string    `json:"version,omitempty"`
 	Timestamp time.Time `json:"timestamp,omitempty"`
 }
 
@@ -80,3 +80,35 @@ type ServiceConfig struct {
 type APIKeyConfig struct {
 	Keys []string `json:"keys"`
 }
+
+// Event represents a change event in the inventory system
+type Event struct {
+	Offset    int64           `json:"offset"`
+	Timestamp string          `json:"timestamp"`
+	EventType string          `json:"eventType"`
+	ProductID string          `json:"productId"`
+	Data      ProductResponse `json:"data"`
+	Version   int             `json:"version"`
+}
+
+// ProductResponse represents product data in events
+type ProductResponse struct {
+	ProductID   string `json:"productId"`
+	Available   int    `json:"available"`
+	Version     int    `json:"version"`
+	LastUpdated string `json:"lastUpdated"`
+}
+
+// EventsResponse represents the response for the events endpoint
+type EventsResponse struct {
+	Events     []Event `json:"events"`
+	NextOffset int64   `json:"nextOffset"`
+	HasMore    bool    `json:"hasMore"`
+	Count      int     `json:"count"`
+}
+
+// EventType constants
+const (
+	EventTypeProductUpdated = "product_updated"
+	EventTypeProductCreated = "product_created"
+)

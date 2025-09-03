@@ -11,16 +11,26 @@ import (
 	"github.com/melibackend/shared/storage"
 )
 
+// SyncManager defines the interface for synchronization managers
+type SyncManager interface {
+	Start(ctx context.Context) error
+	Stop()
+	InitialSync(ctx context.Context) error
+	ForceSync(ctx context.Context) error
+	GetSyncStatus() *storage.SyncStatus
+	UpdateLocalProduct(productID string, available int, version int, lastUpdated time.Time) error
+}
+
 // Manager handles synchronization between central API and local storage
 type Manager struct {
-	client        *client.InventoryClient
-	localStorage  storage.LocalStorage
-	logger        *slog.Logger
-	syncInterval  time.Duration
-	syncMutex     sync.Mutex
-	stopChan      chan struct{}
-	status        *storage.SyncStatus
-	statusMutex   sync.RWMutex
+	client       *client.InventoryClient
+	localStorage storage.LocalStorage
+	logger       *slog.Logger
+	syncInterval time.Duration
+	syncMutex    sync.Mutex
+	stopChan     chan struct{}
+	status       *storage.SyncStatus
+	statusMutex  sync.RWMutex
 }
 
 // NewManager creates a new sync manager
@@ -98,7 +108,7 @@ func (m *Manager) InitialSync(ctx context.Context) error {
 	duration := time.Since(startTime)
 	m.updateSyncStatus(false, true, len(products), "", syncTime)
 
-	m.logger.Info("Initial sync completed successfully", 
+	m.logger.Info("Initial sync completed successfully",
 		"products_synced", len(products),
 		"duration", duration,
 	)
@@ -137,7 +147,7 @@ func (m *Manager) GetSyncStatus() *storage.SyncStatus {
 
 // UpdateLocalProduct updates a single product in local storage after a successful write operation
 func (m *Manager) UpdateLocalProduct(productID string, available int, version int, lastUpdated time.Time) error {
-	m.logger.Debug("Updating local product", 
+	m.logger.Debug("Updating local product",
 		"product_id", productID,
 		"available", available,
 		"version", version,
@@ -193,7 +203,7 @@ func (m *Manager) performFullSync(ctx context.Context, startTime time.Time) erro
 	duration := time.Since(startTime)
 	m.updateSyncStatus(false, true, len(products), "", syncTime)
 
-	m.logger.Debug("Full sync completed", 
+	m.logger.Debug("Full sync completed",
 		"products_synced", len(products),
 		"duration", duration,
 	)

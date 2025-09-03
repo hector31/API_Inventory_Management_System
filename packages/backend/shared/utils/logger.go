@@ -19,7 +19,7 @@ const (
 // NewLogger creates a new structured logger with the specified level
 func NewLogger(level LogLevel) *slog.Logger {
 	var slogLevel slog.Level
-	
+
 	switch strings.ToLower(string(level)) {
 	case "debug":
 		slogLevel = slog.LevelDebug
@@ -37,8 +37,36 @@ func NewLogger(level LogLevel) *slog.Logger {
 		Level: slogLevel,
 	}
 
-	handler := slog.NewJSONHandler(os.Stdout, opts)
+	// Use TextHandler for better readability instead of JSON
+	handler := slog.NewTextHandler(os.Stdout, opts)
 	return slog.New(handler)
+}
+
+// SetupLogging configures the global slog handler based on log level
+// This should be called once at application startup to configure logging for the entire application
+func SetupLogging(logLevel string) {
+	var level slog.Level
+
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	// Create a text handler with the specified log level
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+
+	// Set the default logger for the entire application
+	slog.SetDefault(slog.New(handler))
 }
 
 // GetLogLevelFromEnv gets the log level from environment variable
