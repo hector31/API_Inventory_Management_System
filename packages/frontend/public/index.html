@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Store S1 Inventory Management Frontend" />
+    <title>Store S1 - Inventory Management</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 2rem;
+        backdrop-filter: blur(10px);
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .header p {
+        font-size: 1.2rem;
+        opacity: 0.9;
+      }
+
+      .status {
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      .status h2 {
+        margin-bottom: 1rem;
+        color: #fff;
+      }
+
+      .status-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: rgba(255,255,255,0.1);
+        border-radius: 4px;
+      }
+
+      .btn {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+        margin: 0.5rem;
+        transition: all 0.2s;
+      }
+
+      .btn:hover {
+        background: #2980b9;
+        transform: translateY(-1px);
+      }
+
+      .products {
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 2rem;
+      }
+
+      .spinner {
+        border: 4px solid rgba(255,255,255,0.3);
+        border-top: 4px solid #fff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 2s linear infinite;
+        margin: 0 auto 1rem;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .error {
+        background: rgba(231, 76, 60, 0.2);
+        border: 1px solid rgba(231, 76, 60, 0.5);
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+
+      .success {
+        background: rgba(46, 204, 113, 0.2);
+        border: 1px solid rgba(46, 204, 113, 0.5);
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🏪 Store S1 Inventory</h1>
+        <p>Frontend Application - Testing Mode</p>
+      </div>
+
+      <div class="status">
+        <h2>📊 System Status</h2>
+        <div class="status-item">
+          <span>Frontend Status:</span>
+          <span id="frontend-status">✅ Running</span>
+        </div>
+        <div class="status-item">
+          <span>Store S1 API:</span>
+          <span id="api-status">🔄 Checking...</span>
+        </div>
+        <div class="status-item">
+          <span>Last Update:</span>
+          <span id="last-update">-</span>
+        </div>
+      </div>
+
+      <div style="text-align: center;">
+        <button class="btn" onclick="testAPI()">🔄 Test Store S1 API</button>
+        <button class="btn" onclick="loadProducts()">📦 Load Products</button>
+        <button class="btn" onclick="testHealth()">❤️ Health Check</button>
+      </div>
+
+      <div class="products">
+        <h2>📦 Products</h2>
+        <div id="products-content">
+          <div class="loading">
+            <div class="spinner"></div>
+            <p>Click "Load Products" to fetch inventory data</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Update last update time
+      function updateTime() {
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+      }
+
+      // Test API connectivity
+      async function testAPI() {
+        const statusEl = document.getElementById('api-status');
+        statusEl.textContent = '🔄 Testing...';
+
+        try {
+          const response = await fetch('/api/inventory', {
+            headers: {
+              'X-API-Key': 'demo'
+            }
+          });
+
+          if (response.ok) {
+            statusEl.textContent = '✅ Connected';
+            showMessage('API connection successful!', 'success');
+          } else {
+            statusEl.textContent = '❌ Error ' + response.status;
+            showMessage('API connection failed: ' + response.status, 'error');
+          }
+        } catch (error) {
+          statusEl.textContent = '❌ Failed';
+          showMessage('API connection error: ' + error.message, 'error');
+        }
+
+        updateTime();
+      }
+
+      // Load products
+      async function loadProducts() {
+        const contentEl = document.getElementById('products-content');
+        contentEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading products...</p></div>';
+
+        try {
+          const response = await fetch('/api/inventory', {
+            headers: {
+              'X-API-Key': 'demo'
+            }
+          });
+
+          if (response.ok) {
+            const products = await response.json();
+            displayProducts(products);
+            showMessage(`Loaded ${products.length} products successfully!`, 'success');
+          } else {
+            contentEl.innerHTML = '<p>❌ Failed to load products: ' + response.status + '</p>';
+            showMessage('Failed to load products: ' + response.status, 'error');
+          }
+        } catch (error) {
+          contentEl.innerHTML = '<p>❌ Error loading products: ' + error.message + '</p>';
+          showMessage('Error loading products: ' + error.message, 'error');
+        }
+
+        updateTime();
+      }
+
+      // Display products
+      function displayProducts(products) {
+        const contentEl = document.getElementById('products-content');
+
+        if (!products || products.length === 0) {
+          contentEl.innerHTML = '<p>No products found</p>';
+          return;
+        }
+
+        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">';
+
+        products.forEach(product => {
+          html += `
+            <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 1rem;">
+              <h3>${product.product_id}</h3>
+              <p><strong>Available:</strong> ${product.available}</p>
+              <p><strong>Version:</strong> ${product.version || 'N/A'}</p>
+              <p><strong>Updated:</strong> ${product.last_updated ? new Date(product.last_updated).toLocaleString() : 'N/A'}</p>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        contentEl.innerHTML = html;
+      }
+
+      // Test health
+      async function testHealth() {
+        try {
+          const response = await fetch('/health');
+          if (response.ok) {
+            showMessage('Health check passed!', 'success');
+          } else {
+            showMessage('Health check failed: ' + response.status, 'error');
+          }
+        } catch (error) {
+          showMessage('Health check error: ' + error.message, 'error');
+        }
+        updateTime();
+      }
+
+      // Show message
+      function showMessage(message, type) {
+        const existing = document.querySelector('.message');
+        if (existing) existing.remove();
+
+        const div = document.createElement('div');
+        div.className = 'message ' + type;
+        div.innerHTML = `<p>${message}</p>`;
+        document.querySelector('.container').appendChild(div);
+
+        setTimeout(() => div.remove(), 5000);
+      }
+
+      // Initialize
+      updateTime();
+      setInterval(updateTime, 1000);
+
+      // Auto-test API on load
+      setTimeout(testAPI, 1000);
+    </script>
+  </body>
+</html>
