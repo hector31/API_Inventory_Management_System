@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,11 +13,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
 	"github.com/melibackend/shared/client"
 	sharedmiddleware "github.com/melibackend/shared/middleware"
 	"github.com/melibackend/shared/storage"
 	"github.com/melibackend/shared/sync"
-	"github.com/melibackend/shared/utils"
 	"github.com/melibackend/store-s1/internal/config"
 	"github.com/melibackend/store-s1/internal/handlers"
 )
@@ -27,18 +28,24 @@ const (
 )
 
 func main() {
-	// Load configuration
+	// Load .env file if it exists
+	if err := godotenv.Load(); err != nil {
+		// .env file is optional, so we just log if it's not found
+		fmt.Printf("No .env file found or error loading it: %v\n", err)
+	}
+
+	// Load configuration (setupLogging is called automatically inside)
 	cfg := config.Load()
 
-	// Initialize logger
-	logger := utils.NewLogger(utils.LogLevel(cfg.LogLevel))
-
-	logger.Info("Starting Store S1 API",
+	slog.Info("Starting Store S1 API",
 		"service", serviceName,
 		"version", version,
 		"port", cfg.Port,
 		"environment", cfg.Environment,
 		"central_api_url", cfg.CentralAPIURL,
+		"sync_interval_seconds", cfg.SyncIntervalSeconds,
+		"event_wait_timeout_seconds", cfg.EventWaitTimeoutSeconds,
+		"event_batch_limit", cfg.EventBatchLimit,
 	)
 
 	// Initialize inventory client
@@ -46,36 +53,41 @@ func main() {
 
 	// Test connection to central API
 	if _, err := inventoryClient.HealthCheck(); err != nil {
-		logger.Error("Failed to connect to central inventory API", "error", err)
+		slog.Error("Failed to connect to central inventory API", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("Successfully connected to central inventory API")
+	slog.Info("Successfully connected to central inventory API")
 
 	// Initialize local storage
 	localStorage := storage.NewMemoryStorage(cfg.DataDir)
 	if err := localStorage.Initialize(); err != nil {
-		logger.Error("Failed to initialize local storage", "error", err)
+		slog.Error("Failed to initialize local storage", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("Local storage initialized", "data_dir", cfg.DataDir)
+	slog.Info("Local storage initialized", "data_dir", cfg.DataDir)
 
-	// Initialize sync manager
-	syncManager := sync.NewManager(inventoryClient, localStorage, logger)
-	syncManager.SetSyncInterval(time.Duration(cfg.SyncInterval) * time.Minute)
+	// Initialize event-driven sync manager
+	eventSyncConfig := sync.EventSyncConfig{
+		SyncIntervalSeconds:     cfg.SyncIntervalSeconds,
+		EventWaitTimeoutSeconds: cfg.EventWaitTimeoutSeconds,
+		EventBatchLimit:         cfg.EventBatchLimit,
+		MaxConsecutiveFailures:  5, // Allow 5 consecutive failures before fallback
+	}
+	syncManager := sync.NewEventSyncManager(inventoryClient, localStorage, eventSyncConfig)
 
 	// Start sync manager with initial sync
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if err := syncManager.Start(ctx); err != nil {
-		logger.Error("Failed to start sync manager", "error", err)
+		slog.Error("Failed to start sync manager", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("Sync manager started successfully")
+	slog.Info("Sync manager started successfully")
 
 	// Initialize handlers with local storage
-	healthHandler := handlers.NewHealthHandler(logger, inventoryClient, serviceName, version)
-	inventoryHandler := handlers.NewInventoryHandler(logger, inventoryClient, localStorage, syncManager)
+	healthHandler := handlers.NewHealthHandler(inventoryClient, serviceName, version)
+	inventoryHandler := handlers.NewInventoryHandler(inventoryClient, localStorage, syncManager)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -89,7 +101,7 @@ func main() {
 
 	// API Key authentication for protected routes
 	apiKeys := strings.Split(cfg.APIKeys, ",")
-	authMiddleware := sharedmiddleware.AuthMiddleware(apiKeys, logger)
+	authMiddleware := sharedmiddleware.AuthMiddleware(apiKeys)
 
 	// Routes
 	r.Get("/health", healthHandler.HealthCheck)
@@ -122,14 +134,14 @@ func main() {
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
 
-		logger.Info("Shutting down server...")
+		slog.Info("Shutting down server...")
 
 		// Stop sync manager
 		syncManager.Stop()
 
 		// Close local storage
 		if err := localStorage.Close(); err != nil {
-			logger.Error("Failed to close local storage", "error", err)
+			slog.Error("Failed to close local storage", "error", err)
 		}
 
 		// Cancel context
@@ -140,16 +152,16 @@ func main() {
 		defer shutdownCancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			logger.Error("Server shutdown error", "error", err)
+			slog.Error("Server shutdown error", "error", err)
 		}
 	}()
 
-	logger.Info("Server ready to accept connections", "address", server.Addr)
+	slog.Info("Server ready to accept connections", "address", server.Addr)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("Server failed to start", "error", err)
+		slog.Error("Server failed to start", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("Server stopped")
+	slog.Info("Server stopped")
 }

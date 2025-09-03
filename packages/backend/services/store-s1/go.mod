@@ -7,4 +7,6 @@ require (
 	github.com/melibackend/shared v0.0.0
 )
 
+require github.com/joho/godotenv v1.5.1 // indirect
+
 replace github.com/melibackend/shared => ../../shared

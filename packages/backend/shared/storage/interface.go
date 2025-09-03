@@ -19,6 +19,13 @@ type LocalStorage interface {
 	GetLastSyncTime() (time.Time, error)
 	SetLastSyncTime(t time.Time) error
 
+	// Event offset tracking
+	GetLastEventOffset() (int64, error)
+	SetLastEventOffset(offset int64) error
+
+	// Event-driven sync operations
+	ApplyEvents(events []models.Event) error
+
 	// Product operations
 	GetProduct(productID string) (*models.Product, error)
 	GetAllProducts() ([]models.Product, error)

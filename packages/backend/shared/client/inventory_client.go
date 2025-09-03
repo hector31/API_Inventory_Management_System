@@ -214,3 +214,91 @@ func (c *InventoryClient) GetAllProducts() ([]models.Product, error) {
 
 	return response.Items, nil
 }
+
+// GetAllProductsWithMetadata retrieves all products with metadata including event offset
+func (c *InventoryClient) GetAllProductsWithMetadata() ([]models.Product, int64, error) {
+	url := fmt.Sprintf("%s/v1/inventory", c.baseURL)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, 0, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Parse response with metadata
+	var response struct {
+		Items       []models.Product `json:"items"`
+		NextCursor  string           `json:"nextCursor"`
+		EventOffset int64            `json:"eventOffset"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, 0, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return response.Items, response.EventOffset, nil
+}
+
+// GetEvents retrieves events from the central inventory API
+func (c *InventoryClient) GetEvents(offset int64, limit int, waitSeconds int) (*models.EventsResponse, error) {
+	url := fmt.Sprintf("%s/v1/inventory/events?offset=%d&limit=%d&wait=%d",
+		c.baseURL, offset, limit, waitSeconds)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	// Use a longer timeout for long polling requests
+	client := c.httpClient
+	if waitSeconds > 0 {
+		client = &http.Client{
+			Timeout: time.Duration(waitSeconds+10) * time.Second,
+		}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusGone {
+		return nil, fmt.Errorf("offset not found (410 Gone): central system may have restarted")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var eventsResponse models.EventsResponse
+	if err := json.Unmarshal(body, &eventsResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode events response: %w", err)
+	}
+
+	return &eventsResponse, nil
+}
