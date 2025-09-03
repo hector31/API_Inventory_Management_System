@@ -35,11 +35,11 @@ type ProductUpdate struct {
 
 type UpdateResponse struct {
 	// Single product response fields
-	ProductID   string `json:"productId,omitempty"`
-	NewQuantity int    `json:"newQuantity,omitempty"`
-	NewVersion  int    `json:"newVersion,omitempty"`
-	Applied     bool   `json:"applied,omitempty"`
-	LastUpdated string `json:"lastUpdated,omitempty"`
+	ProductID   string `json:"productId"`
+	NewQuantity int    `json:"newQuantity"`
+	NewVersion  int    `json:"newVersion"`
+	Applied     bool   `json:"applied"`
+	LastUpdated string `json:"lastUpdated"`
 
 	// Batch response fields
 	Results []ProductUpdateResult `json:"results,omitempty"`

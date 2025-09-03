@@ -247,12 +247,14 @@ func (eq *EventQueue) addEventToMemory(event models.Event) {
 		)
 	}
 
-	// Immediately save to file for data consistency (synchronous for reliability)
-	if err := eq.saveToFile(); err != nil {
-		eq.logger.Error("Failed to save events to file immediately", "error", err)
-	} else {
-		eq.logger.Debug("Event saved to file immediately", "offset", event.Offset)
-	}
+	// Save to file immediately but asynchronously to prevent blocking
+	go func() {
+		if err := eq.saveToFile(); err != nil {
+			eq.logger.Error("Failed to save events to file immediately", "error", err)
+		} else {
+			eq.logger.Debug("Event saved to file immediately", "offset", event.Offset)
+		}
+	}()
 }
 
 // notifyWaiters notifies all waiters waiting for events at or after the given offset

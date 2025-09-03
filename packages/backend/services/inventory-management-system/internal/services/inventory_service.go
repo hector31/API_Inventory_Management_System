@@ -278,9 +278,34 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 	for {
 		select {
 		case updateReq := <-s.updateQueue:
-			result := s.processUpdateInternal(updateReq)
+			// Process update with timeout protection
+			resultChan := make(chan *UpdateResult, 1)
+			go func() {
+				result := s.processUpdateInternal(updateReq)
+				resultChan <- result
+			}()
 
-			// Send result back through response channel
+			var result *UpdateResult
+			select {
+			case result = <-resultChan:
+				// Update completed successfully
+			case <-time.After(15 * time.Second):
+				// Update processing timed out
+				slog.Error("Update processing timed out",
+					"worker_id", workerID,
+					"product_id", updateReq.ProductID,
+					"idempotency_key", updateReq.IdempotencyKey)
+				result = &UpdateResult{
+					Success:     false,
+					Error:       fmt.Errorf("update processing timed out"),
+					Applied:     false,
+					NewQuantity: 0,
+					NewVersion:  0,
+					LastUpdated: "",
+				}
+			}
+
+			// Send result back through response channel with timeout
 			select {
 			case updateReq.ResponseChan <- result:
 				// Successfully sent response
@@ -288,7 +313,7 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 					"worker_id", workerID,
 					"product_id", updateReq.ProductID,
 					"applied", result.Applied)
-			case <-time.After(5 * time.Second):
+			case <-time.After(2 * time.Second):
 				slog.Error("Timeout sending update result",
 					"worker_id", workerID,
 					"product_id", updateReq.ProductID,
@@ -352,9 +377,12 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		productData, exists := s.data.Products[req.ProductID]
 		if !exists {
 			result = &UpdateResult{
-				Success: false,
-				Error:   fmt.Errorf("product not found: %s", req.ProductID),
-				Applied: false,
+				Success:     false,
+				Error:       fmt.Errorf("product not found: %s", req.ProductID),
+				Applied:     false,
+				NewQuantity: 0,
+				NewVersion:  0,
+				LastUpdated: "",
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 			return
@@ -363,9 +391,12 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		// Check version for OCC
 		if productData.Version != req.Version {
 			result = &UpdateResult{
-				Success: false,
-				Error:   fmt.Errorf("version conflict: expected %d, got %d", productData.Version, req.Version),
-				Applied: false,
+				Success:     false,
+				Error:       fmt.Errorf("version conflict: expected %d, got %d", productData.Version, req.Version),
+				Applied:     false,
+				NewQuantity: productData.Available, // Return current quantity
+				NewVersion:  productData.Version,   // Return current version
+				LastUpdated: productData.LastUpdated,
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 
@@ -427,33 +458,36 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 	})
 
 	// Publish event if update was successful and event queue is available
+	// Do this asynchronously to prevent blocking the response
 	if result.Success && s.eventQueue != nil {
-		eventData := models.ProductResponse{
-			ProductID:   req.ProductID,
-			Available:   result.NewQuantity,
-			Version:     result.NewVersion,
-			LastUpdated: result.LastUpdated,
-		}
+		go func() {
+			eventData := models.ProductResponse{
+				ProductID:   req.ProductID,
+				Available:   result.NewQuantity,
+				Version:     result.NewVersion,
+				LastUpdated: result.LastUpdated,
+			}
 
-		s.eventQueue.PublishEvent(
-			models.EventTypeProductUpdated,
-			req.ProductID,
-			eventData,
-			result.NewVersion,
-		)
+			s.eventQueue.PublishEvent(
+				models.EventTypeProductUpdated,
+				req.ProductID,
+				eventData,
+				result.NewVersion,
+			)
 
-		// Update metadata with current event offset for snapshot synchronization
-		s.globalMutex.Lock()
-		currentOffset := s.eventQueue.GetCurrentOffset()
-		s.data.Metadata.LastOffset = int(currentOffset)
-		s.data.Metadata.LastUpdated = result.LastUpdated
-		s.globalMutex.Unlock()
+			// Update metadata with current event offset for snapshot synchronization
+			s.globalMutex.Lock()
+			currentOffset := s.eventQueue.GetCurrentOffset()
+			s.data.Metadata.LastOffset = int(currentOffset)
+			s.data.Metadata.LastUpdated = result.LastUpdated
+			s.globalMutex.Unlock()
 
-		slog.Debug("Event published for inventory update",
-			"product_id", req.ProductID,
-			"event_type", models.EventTypeProductUpdated,
-			"new_version", result.NewVersion,
-			"current_offset", currentOffset)
+			slog.Debug("Event published for inventory update",
+				"product_id", req.ProductID,
+				"event_type", models.EventTypeProductUpdated,
+				"new_version", result.NewVersion,
+				"current_offset", currentOffset)
+		}()
 	}
 
 	// Persist changes to JSON file if enabled (outside of product lock)
@@ -581,11 +615,15 @@ func (s *InventoryService) UpdateInventory(productID string, delta, version int,
 		return nil, fmt.Errorf("timeout submitting update to queue")
 	}
 
-	// Wait for result
+	// Wait for result with extended timeout to account for file I/O
 	select {
 	case result := <-responseChan:
 		return result, nil
-	case <-time.After(10 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for update result")
+	case <-time.After(20 * time.Second):
+		slog.Error("Timeout waiting for update result",
+			"product_id", productID,
+			"idempotency_key", idempotencyKey,
+			"timeout", "20s")
+		return nil, fmt.Errorf("timeout waiting for update result after 20 seconds")
 	}
 }

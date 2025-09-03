@@ -124,8 +124,11 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 			"product_id", req.ProductID,
 			"error", err)
 		return models.UpdateResponse{
-			ProductID: req.ProductID,
-			Applied:   false,
+			ProductID:   req.ProductID,
+			Applied:     false,
+			NewQuantity: 0,
+			NewVersion:  0,
+			LastUpdated: "",
 		}
 	}
 
