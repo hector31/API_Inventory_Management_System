@@ -37,7 +37,7 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/logs && \
+RUN mkdir -p /app/logs /app/data && \
     chown -R appuser:appgroup /app
 
 # Copy binary from builder stage

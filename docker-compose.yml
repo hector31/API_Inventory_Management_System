@@ -45,6 +45,8 @@ services:
       - API_KEYS=store-s1-key,demo
       - CENTRAL_API_URL=http://inventory-management-system:8081
       - CENTRAL_API_KEY=demo
+      - DATA_DIR=/app/data
+      - SYNC_INTERVAL_MINUTES=5
     networks:
       - meli_network
     depends_on:
