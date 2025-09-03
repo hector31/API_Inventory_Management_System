@@ -444,12 +444,20 @@ func (h *InventoryHandler) handleRegularListing(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Standard response format
+	// Standard response format with event offset for synchronization
+	metadata := h.inventoryService.GetSystemMetadata()
+	standardResponse := map[string]interface{}{
+		"items":       productList.Items,
+		"nextCursor":  productList.NextCursor,
+		"eventOffset": metadata.LastOffset, // Current event offset for synchronization
+	}
+
 	slog.Info("Products listed successfully",
 		"cursor", cursor,
 		"limit", limit,
 		"found_count", len(productList.Items),
+		"event_offset", metadata.LastOffset,
 		"remote_addr", r.RemoteAddr)
 
-	writeJSONResponse(w, http.StatusOK, productList)
+	writeJSONResponse(w, http.StatusOK, standardResponse)
 }

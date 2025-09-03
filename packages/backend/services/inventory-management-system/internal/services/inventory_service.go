@@ -12,6 +12,7 @@ import (
 
 	"inventory-management-api/internal/cache"
 	"inventory-management-api/internal/config"
+	"inventory-management-api/internal/events"
 	"inventory-management-api/internal/models"
 )
 
@@ -28,6 +29,7 @@ type InventoryService struct {
 	queueBufferSize       int
 	stopWorkers           chan bool
 	workersWaitGroup      sync.WaitGroup
+	eventQueue            *events.EventQueue
 }
 
 // UpdateRequest represents an internal update request for queue processing
@@ -299,6 +301,31 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 	}
 }
 
+// SetEventQueue sets the event queue for publishing events and synchronizes metadata
+func (s *InventoryService) SetEventQueue(eventQueue *events.EventQueue) {
+	s.eventQueue = eventQueue
+
+	// Synchronize metadata with event queue's current offset for perfect consistency
+	s.globalMutex.Lock()
+	currentOffset := eventQueue.GetCurrentOffset()
+
+	// If the database metadata has a higher offset than the event queue,
+	// it means the event queue was reset but the database wasn't.
+	// In this case, we should use the database's offset as the starting point.
+	if s.data.Metadata.LastOffset > int(currentOffset) {
+		slog.Warn("Database metadata offset is higher than event queue offset",
+			"db_offset", s.data.Metadata.LastOffset,
+			"queue_offset", currentOffset,
+			"action", "keeping_database_offset")
+	} else {
+		// Update database metadata to match event queue offset
+		s.data.Metadata.LastOffset = int(currentOffset)
+		slog.Info("Synchronized database metadata with event queue offset",
+			"offset", currentOffset)
+	}
+	s.globalMutex.Unlock()
+}
+
 // processUpdateInternal handles the actual update logic with OCC and idempotency
 func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResult {
 	slog.Debug("Processing update request",
@@ -398,6 +425,36 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 			"delta", req.Delta,
 			"idempotency_key", req.IdempotencyKey)
 	})
+
+	// Publish event if update was successful and event queue is available
+	if result.Success && s.eventQueue != nil {
+		eventData := models.ProductResponse{
+			ProductID:   req.ProductID,
+			Available:   result.NewQuantity,
+			Version:     result.NewVersion,
+			LastUpdated: result.LastUpdated,
+		}
+
+		s.eventQueue.PublishEvent(
+			models.EventTypeProductUpdated,
+			req.ProductID,
+			eventData,
+			result.NewVersion,
+		)
+
+		// Update metadata with current event offset for snapshot synchronization
+		s.globalMutex.Lock()
+		currentOffset := s.eventQueue.GetCurrentOffset()
+		s.data.Metadata.LastOffset = int(currentOffset)
+		s.data.Metadata.LastUpdated = result.LastUpdated
+		s.globalMutex.Unlock()
+
+		slog.Debug("Event published for inventory update",
+			"product_id", req.ProductID,
+			"event_type", models.EventTypeProductUpdated,
+			"new_version", result.NewVersion,
+			"current_offset", currentOffset)
+	}
 
 	// Persist changes to JSON file if enabled (outside of product lock)
 	if result.Success {

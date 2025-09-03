@@ -74,3 +74,27 @@ type ListResponse struct {
 	Items      []ProductResponse `json:"items"`
 	NextCursor string            `json:"nextCursor"`
 }
+
+// Event represents a change event in the inventory system
+type Event struct {
+	Offset    int64           `json:"offset"`
+	Timestamp string          `json:"timestamp"`
+	EventType string          `json:"eventType"`
+	ProductID string          `json:"productId"`
+	Data      ProductResponse `json:"data"`
+	Version   int             `json:"version"`
+}
+
+// EventsResponse represents the response for the events endpoint
+type EventsResponse struct {
+	Events     []Event `json:"events"`
+	NextOffset int64   `json:"nextOffset"`
+	HasMore    bool    `json:"hasMore"`
+	Count      int     `json:"count"`
+}
+
+// EventType constants
+const (
+	EventTypeProductUpdated = "product_updated"
+	EventTypeProductCreated = "product_created"
+)
