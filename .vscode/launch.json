@@ -9,6 +9,15 @@
             "program": "${workspaceFolder}/packages/backend/services/inventory-management-system/cmd/server/main.go",
             "cwd": "${workspaceFolder}/packages/backend/services/inventory-management-system",
             "envFile": "${workspaceFolder}/packages/backend/services/inventory-management-system/.env",
+        },
+        {
+            "name": "Store S1",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/packages/backend/services/store-s1/cmd/server/main.go",
+            "cwd": "${workspaceFolder}/packages/backend/services/store-s1",
+            "envFile": "${workspaceFolder}/packages/backend/services/store-s1/.env",
         }
     ]
 }
