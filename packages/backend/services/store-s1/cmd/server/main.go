@@ -14,6 +14,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/melibackend/shared/client"
 	sharedmiddleware "github.com/melibackend/shared/middleware"
+	"github.com/melibackend/shared/storage"
+	"github.com/melibackend/shared/sync"
 	"github.com/melibackend/shared/utils"
 	"github.com/melibackend/store-s1/internal/config"
 	"github.com/melibackend/store-s1/internal/handlers"
@@ -49,9 +51,31 @@ func main() {
 	}
 	logger.Info("Successfully connected to central inventory API")
 
-	// Initialize handlers
+	// Initialize local storage
+	localStorage := storage.NewMemoryStorage(cfg.DataDir)
+	if err := localStorage.Initialize(); err != nil {
+		logger.Error("Failed to initialize local storage", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("Local storage initialized", "data_dir", cfg.DataDir)
+
+	// Initialize sync manager
+	syncManager := sync.NewManager(inventoryClient, localStorage, logger)
+	syncManager.SetSyncInterval(time.Duration(cfg.SyncInterval) * time.Minute)
+
+	// Start sync manager with initial sync
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := syncManager.Start(ctx); err != nil {
+		logger.Error("Failed to start sync manager", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("Sync manager started successfully")
+
+	// Initialize handlers with local storage
 	healthHandler := handlers.NewHealthHandler(logger, inventoryClient, serviceName, version)
-	inventoryHandler := handlers.NewInventoryHandler(logger, inventoryClient)
+	inventoryHandler := handlers.NewInventoryHandler(logger, inventoryClient, localStorage, syncManager)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -74,11 +98,16 @@ func main() {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(authMiddleware)
 
-		// Store-specific inventory endpoints
+		// Store-specific inventory endpoints (now using local cache)
 		r.Get("/store/inventory", inventoryHandler.GetAllProducts)
 		r.Get("/store/inventory/{productId}", inventoryHandler.GetProduct)
 		r.Post("/store/inventory/updates", inventoryHandler.UpdateInventory)
 		r.Post("/store/inventory/batch-updates", inventoryHandler.BatchUpdateInventory)
+
+		// Sync management endpoints
+		r.Get("/store/sync/status", inventoryHandler.GetSyncStatus)
+		r.Post("/store/sync/force", inventoryHandler.ForceSync)
+		r.Get("/store/cache/stats", inventoryHandler.GetCacheStats)
 	})
 
 	// Start server
@@ -95,10 +124,22 @@ func main() {
 
 		logger.Info("Shutting down server...")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
+		// Stop sync manager
+		syncManager.Stop()
 
-		if err := server.Shutdown(ctx); err != nil {
+		// Close local storage
+		if err := localStorage.Close(); err != nil {
+			logger.Error("Failed to close local storage", "error", err)
+		}
+
+		// Cancel context
+		cancel()
+
+		// Shutdown server
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error("Server shutdown error", "error", err)
 		}
 	}()

@@ -192,13 +192,24 @@ func (c *InventoryClient) GetAllProducts() ([]models.Product, error) {
 		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// The central API returns {"items": [...], "nextCursor": ""} format
+	// Read the response body first to debug the format
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Try to parse as the expected format: {"items": [...], "nextCursor": ""}
 	var response struct {
 		Items      []models.Product `json:"items"`
 		NextCursor string           `json:"nextCursor"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := json.Unmarshal(body, &response); err != nil {
+		// If that fails, try to parse as a direct array
+		var directProducts []models.Product
+		if err2 := json.Unmarshal(body, &directProducts); err2 != nil {
+			return nil, fmt.Errorf("failed to decode response as object or array: %w (original: %v)", err2, err)
+		}
+		return directProducts, nil
 	}
 
 	return response.Items, nil
