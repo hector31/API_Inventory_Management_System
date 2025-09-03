@@ -44,12 +44,13 @@ type UpdateRequest struct {
 
 // UpdateResult represents the result of an update operation
 type UpdateResult struct {
-	Success     bool
-	NewQuantity int
-	NewVersion  int
-	Error       error
-	Applied     bool
-	LastUpdated string
+	Success      bool
+	NewQuantity  int
+	NewVersion   int
+	ErrorType    string
+	ErrorMessage string
+	Applied      bool
+	LastUpdated  string
 }
 
 // InventoryData represents the complete inventory data structure
@@ -73,6 +74,20 @@ type MetadataData struct {
 	TotalProducts int    `json:"totalProducts"` // Quick count of total products
 	LastUpdated   string `json:"lastUpdated"`   // System-wide last update timestamp
 }
+
+const (
+	// Error types
+	ErrTypeProductNotFound       = "product_not_found"
+	ErrTypeVersionConflict       = "version_conflict"
+	ErrTypeInvalidRequest        = "invalid_request"
+	ErrTypeInvalidDelta          = "invalid_delta"
+	ErrTypeInsufficientInventory = "insufficient_inventory"
+	ErrTypeTimeout               = "timeout"
+	ErrTypeInternalError         = "internal_error"
+	ErrTypeUnknown               = "unknown_error"
+	ErrTypeInvalidIdempotencyKey = "invalid_idempotency_key"
+	ErrTypeMissingProductID      = "missing_product_id"
+)
 
 // NewInventoryService creates a new inventory service instance
 func NewInventoryService(cfg *config.Config) (*InventoryService, error) {
@@ -296,12 +311,13 @@ func (s *InventoryService) processUpdateWorker(workerID int) {
 					"product_id", updateReq.ProductID,
 					"idempotency_key", updateReq.IdempotencyKey)
 				result = &UpdateResult{
-					Success:     false,
-					Error:       fmt.Errorf("update processing timed out"),
-					Applied:     false,
-					NewQuantity: 0,
-					NewVersion:  0,
-					LastUpdated: "",
+					Success:      false,
+					ErrorType:    ErrTypeTimeout,
+					ErrorMessage: "update processing timed out",
+					Applied:      false,
+					NewQuantity:  0,
+					NewVersion:   0,
+					LastUpdated:  "",
 				}
 			}
 
@@ -377,12 +393,13 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		productData, exists := s.data.Products[req.ProductID]
 		if !exists {
 			result = &UpdateResult{
-				Success:     false,
-				Error:       fmt.Errorf("product not found: %s", req.ProductID),
-				Applied:     false,
-				NewQuantity: 0,
-				NewVersion:  0,
-				LastUpdated: "",
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("product not found: %s", req.ProductID),
+				ErrorType:    ErrTypeProductNotFound,
+				Applied:      false,
+				NewQuantity:  0,
+				NewVersion:   0,
+				LastUpdated:  "",
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 			return
@@ -391,12 +408,13 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		// Check version for OCC
 		if productData.Version != req.Version {
 			result = &UpdateResult{
-				Success:     false,
-				Error:       fmt.Errorf("version conflict: expected %d, got %d", productData.Version, req.Version),
-				Applied:     false,
-				NewQuantity: productData.Available, // Return current quantity
-				NewVersion:  productData.Version,   // Return current version
-				LastUpdated: productData.LastUpdated,
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("version conflict: expected %d, got %d", productData.Version, req.Version),
+				ErrorType:    ErrTypeVersionConflict,
+				Applied:      false,
+				NewQuantity:  productData.Available, // Return current quantity
+				NewVersion:   productData.Version,   // Return current version
+				LastUpdated:  productData.LastUpdated,
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 
@@ -409,13 +427,26 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 			return
 		}
 
+		// stores only negative quantities
+		if req.Delta > 0 {
+			result = &UpdateResult{
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("invalid delta: %d - only negative quantities are allowed", req.Delta),
+				ErrorType:    ErrTypeInvalidRequest,
+				Applied:      false,
+			}
+			s.cacheIdempotencyResult(req.IdempotencyKey, result)
+			return
+		}
+
 		// Calculate new quantity
 		newQuantity := productData.Available + req.Delta
 		if newQuantity < 0 {
 			result = &UpdateResult{
-				Success: false,
-				Error:   fmt.Errorf("insufficient inventory: current %d, delta %d", productData.Available, req.Delta),
-				Applied: false,
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("insufficient inventory: current %d, delta %d", productData.Available, req.Delta),
+				ErrorType:    ErrTypeInsufficientInventory,
+				Applied:      false,
 			}
 			s.cacheIdempotencyResult(req.IdempotencyKey, result)
 			return

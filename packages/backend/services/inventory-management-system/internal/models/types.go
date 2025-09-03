@@ -35,25 +35,28 @@ type ProductUpdate struct {
 
 type UpdateResponse struct {
 	// Single product response fields
-	ProductID   string `json:"productId"`
-	NewQuantity int    `json:"newQuantity"`
-	NewVersion  int    `json:"newVersion"`
-	Applied     bool   `json:"applied"`
-	LastUpdated string `json:"lastUpdated"`
+	ProductID   string `json:"productId,omitempty"`
+	NewQuantity int    `json:"newQuantity,omitempty"`
+	NewVersion  int    `json:"newVersion,omitempty"`
+	Applied     bool   `json:"applied,omitempty"`
+	LastUpdated string `json:"lastUpdated,omitempty"`
 
 	// Batch response fields
-	Results []ProductUpdateResult `json:"results,omitempty"`
-	Summary *BatchSummary         `json:"summary,omitempty"`
+	Results      []ProductUpdateResult `json:"results,omitempty"`
+	Summary      *BatchSummary         `json:"summary,omitempty"`
+	ErrorType    string                `json:"errorType,omitempty"`
+	ErrorMessage string                `json:"errorMessage,omitempty"`
 }
 
 // ProductUpdateResult represents the result of a single product update in a batch
 type ProductUpdateResult struct {
-	ProductID   string `json:"productId"`
-	NewQuantity int    `json:"newQuantity"`
-	NewVersion  int    `json:"newVersion"`
-	Applied     bool   `json:"applied"`
-	LastUpdated string `json:"lastUpdated"`
-	Error       string `json:"error,omitempty"`
+	ProductID    string `json:"productId"`
+	NewQuantity  int    `json:"newQuantity"`
+	NewVersion   int    `json:"newVersion"`
+	Applied      bool   `json:"applied"`
+	LastUpdated  string `json:"lastUpdated"`
+	ErrorType    string `json:"errorType,omitempty"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
 // BatchSummary provides summary statistics for batch operations
