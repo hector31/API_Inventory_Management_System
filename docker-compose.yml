@@ -10,13 +10,14 @@ services:
       - "8081:8081"
     environment:
       - PORT=8081
-      - LOG_LEVEL=info
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
       - INVENTORY_WORKER_COUNT=4
       - INVENTORY_QUEUE_BUFFER_SIZE=500
       - ENABLE_JSON_PERSISTENCE=true
       - DATA_PATH=./data/inventory_test_data.json
-      - CACHE_TTL_MINUTES=30
-      - CACHE_CLEANUP_INTERVAL_MINUTES=10
+      - IDEMPOTENCY_CACHE_TTL=2m
+      - IDEMPOTENCY_CACHE_CLEANUP_INTERVAL=30s
       - API_KEYS=demo,central-api-key
       - MAX_EVENTS_IN_QUEUE=10000
       - EVENTS_FILE_PATH=./data/events.json
@@ -42,13 +43,18 @@ services:
       - "8083:8083"
     environment:
       - PORT=8083
-      - LOG_LEVEL=info
+      - LOG_LEVEL=debug
       - ENVIRONMENT=development
       - API_KEYS=store-s1-key,demo
       - CENTRAL_API_URL=http://inventory-management-system:8081
       - CENTRAL_API_KEY=demo
       - DATA_DIR=/app/data
+      # Legacy full sync interval (fallback)
       - SYNC_INTERVAL_MINUTES=5
+      # Event-driven sync configuration
+      - SYNC_INTERVAL_SECONDS=30
+      - EVENT_WAIT_TIMEOUT_SECONDS=20
+      - EVENT_BATCH_LIMIT=100
     networks:
       - meli_network
     depends_on:
@@ -59,6 +65,34 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+    container_name: store-frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_BASE_URL=/api
+      - REACT_APP_STORE_API_URL=http://store-s1:8083
+      - REACT_APP_API_KEY=demo
+      - REACT_APP_STORE_ID=store-s1
+      - REACT_APP_STORE_NAME=Store S1
+      - REACT_APP_AUTO_REFRESH_INTERVAL=30000
+      - REACT_APP_REQUEST_TIMEOUT=10000
+    depends_on:
+      - store-s1
+    networks:
+      - meli_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Prometheus for metrics collection
   prometheus:
@@ -88,7 +122,7 @@ services:
     container_name: grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123

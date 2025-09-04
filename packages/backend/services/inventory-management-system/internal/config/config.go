@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -70,7 +71,7 @@ func LoadConfig() *Config {
 func setupLogging(logLevel string) {
 	var level slog.Level
 
-	switch logLevel {
+	switch strings.ToLower(logLevel) {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":
@@ -88,7 +89,7 @@ func setupLogging(logLevel string) {
 		Level: level,
 	})
 
-	// Set the default logger
+	// Set the default logger for the entire application
 	slog.SetDefault(slog.New(handler))
 }
 
