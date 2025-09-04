@@ -66,6 +66,34 @@ services:
       retries: 3
       start_period: 40s
 
+  # Frontend Application
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+    container_name: store-frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_BASE_URL=/api
+      - REACT_APP_STORE_API_URL=http://store-s1:8083
+      - REACT_APP_API_KEY=demo
+      - REACT_APP_STORE_ID=store-s1
+      - REACT_APP_STORE_NAME=Store S1
+      - REACT_APP_AUTO_REFRESH_INTERVAL=30000
+      - REACT_APP_REQUEST_TIMEOUT=10000
+    depends_on:
+      - store-s1
+    networks:
+      - meli_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Prometheus for metrics collection
   prometheus:
     image: prom/prometheus:v2.45.0

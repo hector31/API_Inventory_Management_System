@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Store S1 Inventory Management Frontend" />
+    <title>Store S1 - Inventory Management</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 2rem;
+        backdrop-filter: blur(10px);
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .header p {
+        font-size: 1.2rem;
+        opacity: 0.9;
+      }
+
+      .status {
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      .status h2 {
+        margin-bottom: 1rem;
+        color: #fff;
+      }
+
+      .status-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: rgba(255,255,255,0.1);
+        border-radius: 4px;
+      }
+
+      .btn {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+        margin: 0.5rem;
+        transition: all 0.2s;
+      }
+
+      .btn:hover {
+        background: #2980b9;
+        transform: translateY(-1px);
+      }
+
+      .products {
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 2rem;
+      }
+
+      .spinner {
+        border: 4px solid rgba(255,255,255,0.3);
+        border-top: 4px solid #fff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 2s linear infinite;
+        margin: 0 auto 1rem;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .error {
+        background: rgba(231, 76, 60, 0.2);
+        border: 1px solid rgba(231, 76, 60, 0.5);
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+
+      .success {
+        background: rgba(46, 204, 113, 0.2);
+        border: 1px solid rgba(46, 204, 113, 0.5);
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+
+      .products-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+
+      .auto-refresh-controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: rgba(255,255,255,0.1);
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+      }
+
+      .refresh-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+      }
+
+      .refresh-toggle input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+      }
+
+      .countdown {
+        background: rgba(255,255,255,0.2);
+        padding: 0.2rem 0.6rem;
+        border-radius: 12px;
+        font-weight: bold;
+        min-width: 20px;
+        text-align: center;
+      }
+
+      .pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: rgba(255,255,255,0.1);
+        border-radius: 8px;
+      }
+
+      .pagination-btn {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
+      }
+
+      .pagination-btn:hover:not(:disabled) {
+        background: rgba(255,255,255,0.3);
+        transform: translateY(-1px);
+      }
+
+      .pagination-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .pagination-info {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+
+      .pagination-info span {
+        font-size: 0.9rem;
+      }
+
+      #total-info {
+        opacity: 0.8;
+        font-size: 0.8rem;
+      }
+
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+      }
+
+      .product-card {
+        background: rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid rgba(255,255,255,0.2);
+        transition: all 0.3s;
+      }
+
+      .product-card:hover {
+        background: rgba(255,255,255,0.15);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      }
+
+      .product-card h3 {
+        margin-bottom: 0.5rem;
+        color: #fff;
+        font-size: 1.1rem;
+      }
+
+      .product-card p {
+        margin-bottom: 0.3rem;
+        font-size: 0.9rem;
+      }
+
+      .product-card strong {
+        color: #fff;
+      }
+
+      .loading-overlay {
+        position: relative;
+      }
+
+      .loading-overlay::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.3);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .refreshing {
+        opacity: 0.7;
+        transition: opacity 0.3s;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🏪 Store S1 Inventory</h1>
+        <p>Frontend Application - Testing Mode</p>
+      </div>
+
+      <div class="status">
+        <h2>📊 System Status</h2>
+        <div class="status-item">
+          <span>Frontend Status:</span>
+          <span id="frontend-status">✅ Running</span>
+        </div>
+        <div class="status-item">
+          <span>Store S1 API:</span>
+          <span id="api-status">🔄 Checking...</span>
+        </div>
+        <div class="status-item">
+          <span>Last Update:</span>
+          <span id="last-update">-</span>
+        </div>
+      </div>
+
+      <div style="text-align: center;">
+        <button class="btn" onclick="testAPI()">🔄 Test Store S1 API</button>
+        <button class="btn" onclick="loadProducts(false)">📦 Refresh Products</button>
+        <button class="btn" onclick="testHealth()">❤️ Health Check</button>
+        <button class="btn" onclick="currentPage=1; loadProducts(false)">🏠 Reset to Page 1</button>
+      </div>
+
+      <div class="products">
+        <div class="products-header">
+          <h2>📦 Products</h2>
+          <div class="auto-refresh-controls">
+            <label class="refresh-toggle">
+              <input type="checkbox" id="auto-refresh-toggle" checked>
+              <span>Auto-refresh (5s)</span>
+            </label>
+            <span id="refresh-countdown" class="countdown">5</span>
+          </div>
+        </div>
+
+        <div id="products-content">
+          <div class="loading">
+            <div class="spinner"></div>
+            <p>Loading products...</p>
+          </div>
+        </div>
+
+        <div id="pagination-controls" class="pagination" style="display: none;">
+          <button id="prev-btn" class="btn pagination-btn" onclick="previousPage()">← Previous</button>
+          <div class="pagination-info">
+            <span id="page-info">Page 1 of 1</span>
+            <span id="total-info">(0 products total)</span>
+          </div>
+          <button id="next-btn" class="btn pagination-btn" onclick="nextPage()">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Global state
+      let currentPage = 1;
+      let totalProducts = 0;
+      let productsPerPage = 5;
+      let allProducts = [];
+      let autoRefreshInterval = null;
+      let countdownInterval = null;
+      let countdownSeconds = 5;
+      let isLoading = false;
+
+      // Update last update time
+      function updateTime() {
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+      }
+
+      // Auto-refresh countdown
+      function startCountdown() {
+        countdownSeconds = 5;
+        const countdownEl = document.getElementById('refresh-countdown');
+
+        countdownInterval = setInterval(() => {
+          countdownEl.textContent = countdownSeconds;
+          countdownSeconds--;
+
+          if (countdownSeconds < 0) {
+            countdownSeconds = 5;
+            if (document.getElementById('auto-refresh-toggle').checked && !isLoading) {
+              loadProducts(true); // Silent refresh
+            }
+          }
+        }, 1000);
+      }
+
+      // Stop countdown
+      function stopCountdown() {
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+        document.getElementById('refresh-countdown').textContent = '-';
+      }
+
+      // Test API connectivity
+      async function testAPI() {
+        const statusEl = document.getElementById('api-status');
+        statusEl.textContent = '🔄 Testing...';
+
+        try {
+          const response = await fetch('/api/inventory', {
+            headers: {
+              'X-API-Key': 'demo'
+            }
+          });
+
+          if (response.ok) {
+            statusEl.textContent = '✅ Connected';
+            showMessage('API connection successful!', 'success');
+          } else {
+            statusEl.textContent = '❌ Error ' + response.status;
+            showMessage('API connection failed: ' + response.status, 'error');
+          }
+        } catch (error) {
+          statusEl.textContent = '❌ Failed';
+          showMessage('API connection error: ' + error.message, 'error');
+        }
+
+        updateTime();
+      }
+
+      // Load products with pagination support
+      async function loadProducts(silent = false) {
+        if (isLoading) return;
+
+        isLoading = true;
+        const contentEl = document.getElementById('products-content');
+
+        if (!silent) {
+          contentEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading products...</p></div>';
+        } else {
+          contentEl.classList.add('refreshing');
+        }
+
+        try {
+          const response = await fetch('/api/inventory', {
+            headers: {
+              'X-API-Key': 'demo'
+            }
+          });
+
+          if (response.ok) {
+            const products = await response.json();
+            allProducts = products || [];
+            totalProducts = allProducts.length;
+
+            // Reset to page 1 if current page is beyond available pages
+            const maxPages = Math.ceil(totalProducts / productsPerPage);
+            if (currentPage > maxPages && maxPages > 0) {
+              currentPage = 1;
+            }
+
+            displayCurrentPage();
+            updatePaginationControls();
+
+            if (!silent) {
+              showMessage(`Loaded ${totalProducts} products successfully!`, 'success');
+            }
+
+            // Update API status
+            document.getElementById('api-status').textContent = '✅ Connected';
+          } else {
+            contentEl.innerHTML = '<p>❌ Failed to load products: ' + response.status + '</p>';
+            if (!silent) {
+              showMessage('Failed to load products: ' + response.status, 'error');
+            }
+            document.getElementById('api-status').textContent = '❌ Error ' + response.status;
+          }
+        } catch (error) {
+          console.error('Failed to load products:', error);
+          contentEl.innerHTML = '<p>❌ Error loading products: ' + error.message + '</p>';
+          if (!silent) {
+            showMessage('Error loading products: ' + error.message, 'error');
+          }
+          document.getElementById('api-status').textContent = '❌ Failed';
+        } finally {
+          isLoading = false;
+          contentEl.classList.remove('refreshing');
+          updateTime();
+        }
+      }
+
+      // Display current page of products
+      function displayCurrentPage() {
+        const contentEl = document.getElementById('products-content');
+
+        if (!allProducts || allProducts.length === 0) {
+          contentEl.innerHTML = '<p>No products found</p>';
+          document.getElementById('pagination-controls').style.display = 'none';
+          return;
+        }
+
+        // Calculate pagination
+        const startIndex = (currentPage - 1) * productsPerPage;
+        const endIndex = startIndex + productsPerPage;
+        const currentProducts = allProducts.slice(startIndex, endIndex);
+
+        // Display products
+        let html = '<div class="product-grid">';
+
+        currentProducts.forEach(product => {
+          const stockStatus = getStockStatus(product.available);
+          const stockColor = getStockColor(product.available);
+
+          html += `
+            <div class="product-card">
+              <h3>${product.product_id}</h3>
+              <p><strong>Available:</strong> <span style="color: ${stockColor};">${product.available} ${stockStatus}</span></p>
+              <p><strong>Version:</strong> ${product.version || 'N/A'}</p>
+              <p><strong>Updated:</strong> ${product.last_updated ? new Date(product.last_updated).toLocaleString() : 'N/A'}</p>
+              ${product.price ? `<p><strong>Price:</strong> $${product.price.toFixed(2)}</p>` : ''}
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        contentEl.innerHTML = html;
+
+        // Show pagination controls
+        const paginationEl = document.getElementById('pagination-controls');
+        if (paginationEl) {
+          paginationEl.style.display = 'flex';
+        }
+      }
+
+      // Get stock status text
+      function getStockStatus(available) {
+        if (available === 0) return '(Out of Stock)';
+        if (available <= 5) return '(Low Stock)';
+        return '(In Stock)';
+      }
+
+      // Get stock color
+      function getStockColor(available) {
+        if (available === 0) return '#e74c3c';
+        if (available <= 5) return '#f39c12';
+        return '#27ae60';
+      }
+
+      // Update pagination controls
+      function updatePaginationControls() {
+        const totalPages = Math.ceil(totalProducts / productsPerPage);
+        const startItem = totalProducts === 0 ? 0 : (currentPage - 1) * productsPerPage + 1;
+        const endItem = Math.min(currentPage * productsPerPage, totalProducts);
+
+        document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+        document.getElementById('total-info').textContent = `(${startItem}-${endItem} of ${totalProducts} products)`;
+
+        document.getElementById('prev-btn').disabled = currentPage <= 1;
+        document.getElementById('next-btn').disabled = currentPage >= totalPages;
+      }
+
+      // Navigation functions
+      function previousPage() {
+        if (currentPage > 1) {
+          currentPage--;
+          displayCurrentPage();
+          updatePaginationControls();
+        }
+      }
+
+      function nextPage() {
+        const totalPages = Math.ceil(totalProducts / productsPerPage);
+        if (currentPage < totalPages) {
+          currentPage++;
+          displayCurrentPage();
+          updatePaginationControls();
+        }
+      }
+
+      // Test health
+      async function testHealth() {
+        try {
+          const response = await fetch('/health');
+          if (response.ok) {
+            showMessage('Health check passed!', 'success');
+          } else {
+            showMessage('Health check failed: ' + response.status, 'error');
+          }
+        } catch (error) {
+          showMessage('Health check error: ' + error.message, 'error');
+        }
+        updateTime();
+      }
+
+      // Show message
+      function showMessage(message, type) {
+        const existing = document.querySelector('.message');
+        if (existing) existing.remove();
+
+        const div = document.createElement('div');
+        div.className = 'message ' + type;
+        div.innerHTML = `<p>${message}</p>`;
+        document.querySelector('.container').appendChild(div);
+
+        setTimeout(() => div.remove(), 5000);
+      }
+
+      // Toggle auto-refresh
+      function toggleAutoRefresh() {
+        const toggle = document.getElementById('auto-refresh-toggle');
+
+        if (toggle.checked) {
+          startCountdown();
+          showMessage('Auto-refresh enabled (every 5 seconds)', 'success');
+        } else {
+          stopCountdown();
+          showMessage('Auto-refresh disabled', 'warning');
+        }
+      }
+
+      // Initialize application
+      function initializeApp() {
+        updateTime();
+        setInterval(updateTime, 1000);
+
+        // Set up auto-refresh toggle
+        const toggleEl = document.getElementById('auto-refresh-toggle');
+        if (toggleEl) {
+          toggleEl.addEventListener('change', toggleAutoRefresh);
+        } else {
+          console.error('Auto-refresh toggle element not found');
+        }
+
+        // Auto-load products on page load
+        setTimeout(() => {
+          loadProducts();
+          testAPI();
+        }, 500);
+
+        // Fallback: Force load after 2 seconds if nothing is displayed
+        setTimeout(() => {
+          const contentEl = document.getElementById('products-content');
+          if (contentEl && contentEl.innerHTML.includes('Loading products...')) {
+            console.warn('Fallback: Retrying product load...');
+            loadProducts();
+          }
+        }, 2000);
+
+        // Start auto-refresh countdown
+        setTimeout(startCountdown, 1000);
+      }
+
+      // Initialize when DOM is ready
+      function ensureInitialization() {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initializeApp);
+        } else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+          // DOM is ready, but let's wait a bit more to ensure all elements are rendered
+          setTimeout(initializeApp, 100);
+        } else {
+          // Fallback
+          setTimeout(ensureInitialization, 100);
+        }
+      }
+
+      // Start initialization
+      ensureInitialization();
+    </script>
+  </body>
+</html>
