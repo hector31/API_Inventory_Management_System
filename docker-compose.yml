@@ -38,11 +38,116 @@ services:
       retries: 3
       start_period: 40s
 
-  # Store S1 API
+  # 🆕 Store S2 API
+  store-s2:
+    build:
+      context: ./packages/backend
+      dockerfile: ./services/store-s1/Dockerfile  # Reutiliza el mismo Dockerfile
+    container_name: store-s2
+    restart: unless-stopped
+    ports:
+      - "8084:8083"
+    environment:
+      - PORT=8083
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
+      - API_KEYS=store-s2-key,demo
+      - CENTRAL_API_URL=http://inventory-management-system:8081
+      - CENTRAL_API_KEY=demo
+      - DATA_DIR=/app/data
+      # Legacy full sync interval (fallback)
+      - SYNC_INTERVAL_MINUTES=5
+      # Event-driven sync configuration
+      - SYNC_INTERVAL_SECONDS=30
+      - EVENT_WAIT_TIMEOUT_SECONDS=20
+      - EVENT_BATCH_LIMIT=100
+    networks:
+      - meli_network
+    depends_on:
+      - inventory-management-system
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  # 🆕 Store S3 API
+  store-s3:
+    build:
+      context: ./packages/backend
+      dockerfile: ./services/store-s1/Dockerfile  # Reutiliza el mismo Dockerfile
+    container_name: store-s3
+    restart: unless-stopped
+    ports:
+      - "8085:8083"
+    environment:
+      - PORT=8083
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
+      - API_KEYS=store-s3-key,demo
+      - CENTRAL_API_URL=http://inventory-management-system:8081
+      - CENTRAL_API_KEY=demo
+      - DATA_DIR=/app/data
+      # Legacy full sync interval (fallback)
+      - SYNC_INTERVAL_MINUTES=5
+      # Event-driven sync configuration
+      - SYNC_INTERVAL_SECONDS=30
+      - EVENT_WAIT_TIMEOUT_SECONDS=20
+      - EVENT_BATCH_LIMIT=100
+    networks:
+      - meli_network
+    depends_on:
+      - inventory-management-system
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  # 🆕 Store S4 API
+  store-s4:
+    build:
+      context: ./packages/backend
+      dockerfile: ./services/store-s1/Dockerfile  # Reutiliza el mismo Dockerfile
+    container_name: store-s4
+    restart: unless-stopped
+    ports:
+      - "8086:8083"
+    environment:
+      - PORT=8083
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
+      - API_KEYS=store-s4-key,demo
+      - CENTRAL_API_URL=http://inventory-management-system:8081
+      - CENTRAL_API_KEY=demo
+      - DATA_DIR=/app/data
+      # Legacy full sync interval (fallback)
+      - SYNC_INTERVAL_MINUTES=5
+      # Event-driven sync configuration
+      - SYNC_INTERVAL_SECONDS=30
+      - EVENT_WAIT_TIMEOUT_SECONDS=20
+      - EVENT_BATCH_LIMIT=100
+    networks:
+      - meli_network
+    depends_on:
+      - inventory-management-system
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  # 🆕 Store S1 API
   store-s1:
     build:
       context: ./packages/backend
-      dockerfile: ./services/store-s1/Dockerfile
+      dockerfile: ./services/store-s1/Dockerfile  # Reutiliza el mismo Dockerfile
     container_name: store-s1
     restart: unless-stopped
     ports:
@@ -72,60 +177,28 @@ services:
       retries: 3
       start_period: 40s
 
-  # 🆕 Store S5 API (Nueva Tienda)
-  store-s5:
-    build:
-      context: ./packages/backend
-      dockerfile: ./services/store-s1/Dockerfile  # Reutiliza el mismo Dockerfile
-    container_name: store-s5
-    restart: unless-stopped
-    ports:
-      - "8087:8083"  # Nuevo puerto para Store S5
-    environment:
-      - PORT=8083
-      - LOG_LEVEL=debug
-      - ENVIRONMENT=development
-      - API_KEYS=store-s5-key,demo
-      - CENTRAL_API_URL=http://inventory-management-system:8081
-      - CENTRAL_API_KEY=demo
-      - DATA_DIR=/app/data
-      # Legacy full sync interval (fallback)
-      - SYNC_INTERVAL_MINUTES=5
-      # Event-driven sync configuration
-      - SYNC_INTERVAL_SECONDS=30
-      - EVENT_WAIT_TIMEOUT_SECONDS=20
-      - EVENT_BATCH_LIMIT=100
-    networks:
-      - meli_network
-    depends_on:
-      - inventory-management-system
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
   # Frontend Application
   # 🚀 Ultra-Fast Frontend (Build in seconds!)
-  frontend:
+
+  # 🆕 Store S2 Frontend
+  frontend-s2:
     build:
       context: ./packages/frontend
       dockerfile: Dockerfile
       args:
         - REACT_APP_API_BASE_URL=/api
-        - REACT_APP_STORE_API_URL=http://store-s1:8083
+        - REACT_APP_STORE_API_URL=http://store-s2:8083
         - REACT_APP_API_KEY=demo
-        - REACT_APP_STORE_ID=store-s1
-        - REACT_APP_STORE_NAME=Store S1 FUNCIONAAA
+        - REACT_APP_STORE_ID=store-s2
+        - REACT_APP_STORE_NAME=Store S2
         - REACT_APP_AUTO_REFRESH_INTERVAL=30000
         - REACT_APP_REQUEST_TIMEOUT=10000
-    container_name: store-frontend
+    container_name: store-s2-frontend
     restart: unless-stopped
     ports:
-      - "3002:80"
+      - "3011:80"
     depends_on:
-      - store-s1
+      - store-s2
     networks:
       - meli_network
     healthcheck:
@@ -134,25 +207,82 @@ services:
       timeout: 10s
       retries: 3
 
-  # 🆕 Store S5 Frontend (Nueva Tienda)
-  frontend-s5:
+
+  # 🆕 Store S3 Frontend
+  frontend-s3:
     build:
       context: ./packages/frontend
       dockerfile: Dockerfile
       args:
         - REACT_APP_API_BASE_URL=/api
-        - REACT_APP_STORE_API_URL=http://store-s5:8083
+        - REACT_APP_STORE_API_URL=http://store-s3:8083
         - REACT_APP_API_KEY=demo
-        - REACT_APP_STORE_ID=store-s5
-        - REACT_APP_STORE_NAME=Store S5
+        - REACT_APP_STORE_ID=store-s3
+        - REACT_APP_STORE_NAME=Store S3
         - REACT_APP_AUTO_REFRESH_INTERVAL=30000
         - REACT_APP_REQUEST_TIMEOUT=10000
-    container_name: store-s5-frontend
+    container_name: store-s3-frontend
     restart: unless-stopped
     ports:
-      - "3014:80"  # Nuevo puerto para Store S5 Frontend
+      - "3012:80"
     depends_on:
-      - store-s5
+      - store-s3
+    networks:
+      - meli_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
+  # 🆕 Store S4 Frontend
+  frontend-s4:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_BASE_URL=/api
+        - REACT_APP_STORE_API_URL=http://store-s4:8083
+        - REACT_APP_API_KEY=demo
+        - REACT_APP_STORE_ID=store-s4
+        - REACT_APP_STORE_NAME=Store S4
+        - REACT_APP_AUTO_REFRESH_INTERVAL=30000
+        - REACT_APP_REQUEST_TIMEOUT=10000
+    container_name: store-s4-frontend
+    restart: unless-stopped
+    ports:
+      - "3013:80"
+    depends_on:
+      - store-s4
+    networks:
+      - meli_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
+  # 🆕 Store S1 Frontend
+  frontend-s1:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_BASE_URL=/api
+        - REACT_APP_STORE_API_URL=http://store-s1:8083
+        - REACT_APP_API_KEY=demo
+        - REACT_APP_STORE_ID=store-s1
+        - REACT_APP_STORE_NAME=Store S1
+        - REACT_APP_AUTO_REFRESH_INTERVAL=30000
+        - REACT_APP_REQUEST_TIMEOUT=10000
+    container_name: store-s1-frontend
+    restart: unless-stopped
+    ports:
+      - "3010:80"
+    depends_on:
+      - store-s1
     networks:
       - meli_network
     healthcheck:
