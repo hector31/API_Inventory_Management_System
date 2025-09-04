@@ -139,36 +139,21 @@
         gap: 1rem;
       }
 
-      .auto-refresh-controls {
+      .last-update-info {
         display: flex;
         align-items: center;
-        gap: 1rem;
         background: rgba(255,255,255,0.1);
         padding: 0.5rem 1rem;
         border-radius: 20px;
         font-size: 0.9rem;
+        color: rgba(255,255,255,0.9);
       }
 
-      .refresh-toggle {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        cursor: pointer;
+      #last-update-display {
+        font-weight: 500;
       }
 
-      .refresh-toggle input[type="checkbox"] {
-        width: 16px;
-        height: 16px;
-      }
-
-      .countdown {
-        background: rgba(255,255,255,0.2);
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-weight: bold;
-        min-width: 20px;
-        text-align: center;
-      }
+      /* Auto-refresh styles removed for cleaner interface */
 
       .pagination {
         display: flex;
@@ -257,13 +242,7 @@
         font-size: 1.2em;
       }
 
-      .product-id {
-        color: rgba(255,255,255,0.7);
-        font-size: 0.85em;
-        font-style: italic;
-        display: block;
-        margin-top: 2px;
-      }
+      /* Product ID styles removed - no longer displayed */
 
       .product-card p {
         margin-bottom: 0.3rem;
@@ -310,6 +289,7 @@
         width: 400px;
         height: 100vh;
         background: white;
+        color: #000000;
         box-shadow: -2px 0 10px rgba(0,0,0,0.1);
         transition: right 0.3s ease;
         z-index: 1000;
@@ -328,6 +308,7 @@
         justify-content: space-between;
         align-items: center;
         background: #f8f9fa;
+        color: #000000;
       }
 
       .close-cart {
@@ -342,6 +323,7 @@
         flex: 1;
         overflow-y: auto;
         padding: 20px;
+        color: #000000;
       }
 
       .cart-item {
@@ -350,6 +332,7 @@
         align-items: center;
         padding: 15px 0;
         border-bottom: 1px solid #eee;
+        color: #000000;
       }
 
       .cart-item-info {
@@ -359,6 +342,7 @@
       .cart-item-name {
         font-weight: bold;
         margin-bottom: 5px;
+        color: #000000;
       }
 
       .cart-item-price {
@@ -410,12 +394,14 @@
         padding: 20px;
         border-top: 1px solid #eee;
         background: #f8f9fa;
+        color: #000000;
       }
 
       .cart-total {
         margin-bottom: 15px;
         font-size: 18px;
         text-align: center;
+        color: #000000;
       }
 
       .purchase-btn {
@@ -454,6 +440,7 @@
 
       .modal-content {
         background: white;
+        color: #000000;
         border-radius: 8px;
         width: 90%;
         max-width: 600px;
@@ -470,6 +457,7 @@
         align-items: center;
         background: #f8f9fa;
         border-radius: 8px 8px 0 0;
+        color: #000000;
       }
 
       .close-modal {
@@ -482,6 +470,7 @@
 
       .modal-body {
         padding: 20px;
+        color: #000000;
       }
 
       .purchase-item {
@@ -587,9 +576,14 @@
         padding: 40px 20px;
       }
 
+      .empty-cart p {
+        color: #666;
+      }
+
       .empty-cart-icon {
         font-size: 48px;
         margin-bottom: 10px;
+        color: #666;
       }
     </style>
   </head>
@@ -627,12 +621,8 @@
       <div class="products">
         <div class="products-header">
           <h2>📦 Products</h2>
-          <div class="auto-refresh-controls">
-            <label class="refresh-toggle">
-              <input type="checkbox" id="auto-refresh-toggle" checked>
-              <span>Auto-refresh (5s)</span>
-            </label>
-            <span id="refresh-countdown" class="countdown">5</span>
+          <div class="last-update-info">
+            <span id="last-update-display">Last Update: Loading...</span>
           </div>
         </div>
 
@@ -714,9 +704,7 @@
       let totalProducts = 0;
       let productsPerPage = 5;
       let allProducts = [];
-      let autoRefreshInterval = null;
-      let countdownInterval = null;
-      let countdownSeconds = 5;
+      let lastRefreshTime = null;
 
       // Shopping cart state
       let cart = [];
@@ -1134,31 +1122,38 @@
         document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
       }
 
-      // Auto-refresh countdown
-      function startCountdown() {
-        countdownSeconds = 5;
-        const countdownEl = document.getElementById('refresh-countdown');
+      // Auto-refresh functionality removed for cleaner user experience
 
-        countdownInterval = setInterval(() => {
-          countdownEl.textContent = countdownSeconds;
-          countdownSeconds--;
+      // Update last refresh display
+      function updateLastRefreshDisplay() {
+        const displayEl = document.getElementById('last-update-display');
 
-          if (countdownSeconds < 0) {
-            countdownSeconds = 5;
-            if (document.getElementById('auto-refresh-toggle').checked && !isLoading) {
-              loadProducts(true); // Silent refresh
-            }
-          }
-        }, 1000);
-      }
-
-      // Stop countdown
-      function stopCountdown() {
-        if (countdownInterval) {
-          clearInterval(countdownInterval);
-          countdownInterval = null;
+        if (!lastRefreshTime) {
+          displayEl.textContent = 'Last Update: Never';
+          return;
         }
-        document.getElementById('refresh-countdown').textContent = '-';
+
+        // Format the date and time in a user-friendly way
+        const now = new Date();
+        const diffMs = now - lastRefreshTime;
+        const diffSeconds = Math.floor(diffMs / 1000);
+        const diffMinutes = Math.floor(diffSeconds / 60);
+        const diffHours = Math.floor(diffMinutes / 60);
+
+        let timeAgo;
+        if (diffSeconds < 60) {
+          timeAgo = 'just now';
+        } else if (diffMinutes < 60) {
+          timeAgo = `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+        } else if (diffHours < 24) {
+          timeAgo = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+        } else {
+          // For older updates, show the actual date and time
+          timeAgo = lastRefreshTime.toLocaleDateString() + ' at ' +
+                   lastRefreshTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
+        displayEl.textContent = `Last Update: ${timeAgo}`;
       }
 
       // Test API connectivity
@@ -1252,6 +1247,10 @@
 
             displayCurrentPage();
             updatePaginationControls();
+
+            // Update last refresh timestamp
+            lastRefreshTime = new Date();
+            updateLastRefreshDisplay();
 
             if (!silent) {
               showMessage(`Loaded ${totalProducts} products successfully!`, 'success');
@@ -1367,11 +1366,8 @@
             <div class="product-card">
               <div class="product-header">
                 <h3>${productName}</h3>
-                <span class="product-id">(${productId})</span>
               </div>
               <p><strong>Available:</strong> <span style="color: ${stockColor};">${available} ${stockStatus}</span></p>
-              <p><strong>Version:</strong> ${version}</p>
-              <p><strong>Updated:</strong> ${formattedDate}</p>
               <p><strong>Price:</strong> $${price.toFixed(2)}</p>
               <button class="btn add-to-cart-btn" onclick="addToCart('${productId}', '${productName.replace(/'/g, "\\'")}', ${price}, ${available}, ${version})"
                       ${available <= 0 || price <= 0 ? 'disabled' : ''}>
@@ -1491,18 +1487,7 @@
         setTimeout(() => div.remove(), 5000);
       }
 
-      // Toggle auto-refresh
-      function toggleAutoRefresh() {
-        const toggle = document.getElementById('auto-refresh-toggle');
-
-        if (toggle.checked) {
-          startCountdown();
-          showMessage('Auto-refresh enabled (every 5 seconds)', 'success');
-        } else {
-          stopCountdown();
-          showMessage('Auto-refresh disabled', 'warning');
-        }
-      }
+      // Auto-refresh toggle functionality removed
 
       // Initialize application
       function initializeApp() {
@@ -1512,13 +1497,11 @@
         // Initialize cart display
         updateCartDisplay();
 
-        // Set up auto-refresh toggle
-        const toggleEl = document.getElementById('auto-refresh-toggle');
-        if (toggleEl) {
-          toggleEl.addEventListener('change', toggleAutoRefresh);
-        } else {
-          console.error('Auto-refresh toggle element not found');
-        }
+        // Initialize last refresh display
+        updateLastRefreshDisplay();
+
+        // Update last refresh display every 30 seconds
+        setInterval(updateLastRefreshDisplay, 30000);
 
         // Auto-load products on page load
         setTimeout(() => {
@@ -1534,9 +1517,6 @@
             loadProducts();
           }
         }, 2000);
-
-        // Start auto-refresh countdown
-        setTimeout(startCountdown, 1000);
       }
 
       // Initialize when DOM is ready
