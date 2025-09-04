@@ -3,6 +3,9 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    cluster: 'local-docker'
+    environment: 'development'
 
 # Alertmanager configuration (optional)
 alerting:
@@ -23,16 +26,33 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Inventory Management API
-  - job_name: 'inventory-api'
+  # OpenTelemetry Collector metrics endpoint
+  - job_name: 'otel-collector'
     static_configs:
-      - targets: ['inventory-api:8081']
+      - targets: ['otel-collector:8889']
     metrics_path: '/metrics'
-    scrape_interval: 30s
+    scrape_interval: 15s
     scrape_timeout: 10s
 
-  # Docker containers (if Docker metrics enabled)
-  - job_name: 'docker'
+  # Inventory Management API (direct scraping)
+  - job_name: 'inventory-api-direct'
     static_configs:
-      - targets: ['host.docker.internal:9323']
+      - targets: ['inventory-management-system:9080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Store S1 API (if it has metrics)
+  - job_name: 'store-s1-api'
+    static_configs:
+      - targets: ['store-s1:9080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # OpenTelemetry Collector internal metrics
+  - job_name: 'otel-collector-internal'
+    static_configs:
+      - targets: ['otel-collector:8888']
+    metrics_path: '/metrics'
     scrape_interval: 30s
