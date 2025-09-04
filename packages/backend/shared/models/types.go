@@ -9,6 +9,7 @@ type Product struct {
 	Available   int       `json:"available"`
 	Version     int       `json:"version"`
 	LastUpdated time.Time `json:"lastUpdated"`
+	Price       float64   `json:"price"`
 }
 
 // UpdateRequest represents a single inventory update request
@@ -94,11 +95,12 @@ type Event struct {
 
 // ProductResponse represents product data in events
 type ProductResponse struct {
-	ProductID   string `json:"productId"`
-	Name        string `json:"name"`
-	Available   int    `json:"available"`
-	Version     int    `json:"version"`
-	LastUpdated string `json:"lastUpdated"`
+	ProductID   string  `json:"productId"`
+	Name        string  `json:"name"`
+	Available   int     `json:"available"`
+	Version     int     `json:"version"`
+	LastUpdated string  `json:"lastUpdated"`
+	Price       float64 `json:"price"`
 }
 
 // EventsResponse represents the response for the events endpoint

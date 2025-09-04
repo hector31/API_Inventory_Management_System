@@ -724,16 +724,14 @@
       let isLoading = false;
 
       // Shopping Cart Functions
-      function calculateMockPrice(productId) {
-        // Generate consistent mock prices based on product ID
-        const hash = productId.split('').reduce((a, b) => {
-          a = ((a << 5) - a) + b.charCodeAt(0);
-          return a & a;
-        }, 0);
-        return Math.abs(hash % 100) + 10; // Price between $10-$110
-      }
 
       function addToCart(productId, productName, price, available, version) {
+        // Validate that price is a valid number
+        if (typeof price !== 'number' || isNaN(price) || price <= 0) {
+          showMessage(`Invalid price for ${productName}`, 'error');
+          return;
+        }
+
         // Check if product is already in cart
         const existingItem = cart.find(item => item.productId === productId);
 
@@ -1357,8 +1355,13 @@
           const available = product.available !== undefined ? product.available :
                            (product.Available !== undefined ? product.Available : 0);
 
-          // Calculate price (mock price based on product ID for demo)
-          const price = product.price || calculateMockPrice(productId);
+          // Use real price from API response
+          const price = product.price || 0;
+
+          // Validate price
+          if (typeof price !== 'number' || isNaN(price) || price < 0) {
+            console.warn(`Invalid price for product ${productId}:`, price);
+          }
 
           html += `
             <div class="product-card">
@@ -1370,8 +1373,8 @@
               <p><strong>Version:</strong> ${version}</p>
               <p><strong>Updated:</strong> ${formattedDate}</p>
               <p><strong>Price:</strong> $${price.toFixed(2)}</p>
-              <button class="btn add-to-cart-btn" onclick="addToCart('${productId}', '${productName}', ${price}, ${available}, ${version})"
-                      ${available <= 0 ? 'disabled' : ''}>
+              <button class="btn add-to-cart-btn" onclick="addToCart('${productId}', '${productName.replace(/'/g, "\\'")}', ${price}, ${available}, ${version})"
+                      ${available <= 0 || price <= 0 ? 'disabled' : ''}>
                 🛒 Add to Cart
               </button>
             </div>
