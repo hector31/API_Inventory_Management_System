@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -30,22 +32,96 @@ func NewInventoryHandler(inventoryClient *client.InventoryClient, localStorage s
 	}
 }
 
-// GetAllProducts handles GET /v1/store/inventory (now using local cache)
+// GetAllProducts handles GET /v1/store/inventory with pagination support (using local cache)
 func (h *InventoryHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Getting all products for store from local cache", "remote_addr", r.RemoteAddr)
 
-	products, err := h.localStorage.GetAllProducts()
+	// Parse query parameters for pagination
+	offsetStr := r.URL.Query().Get("offset")
+	limitStr := r.URL.Query().Get("limit")
+
+	// Parse offset (default 0)
+	offset := 0
+	if offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	// Parse limit (default 50, max 200)
+	limit := 50
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+			// Cap the limit to prevent excessive resource usage
+			if limit > 200 {
+				limit = 200
+			}
+		}
+	}
+
+	// Get all products from local storage
+	allProducts, err := h.localStorage.GetAllProducts()
 	if err != nil {
 		slog.Error("Failed to get products from local storage", "error", err)
-		h.writeErrorResponse(w, "Failed to retrieve products", http.StatusInternalServerError)
+		h.writeErrorResponse(w, "storage_error", "Failed to retrieve products", http.StatusInternalServerError, nil)
 		return
 	}
 
-	slog.Info("Successfully retrieved products from local cache", "count", len(products))
+	// Convert models.Product to response format with consistent field names
+	var productResponses []map[string]interface{}
+	for _, product := range allProducts {
+		productResponse := map[string]interface{}{
+			"productId":   product.ProductID,
+			"name":        product.Name,
+			"available":   product.Available,
+			"version":     product.Version,
+			"lastUpdated": product.LastUpdated.Format("2006-01-02T15:04:05Z07:00"),
+		}
+		productResponses = append(productResponses, productResponse)
+	}
+
+	// Sort products by productId for deterministic pagination
+	sort.Slice(productResponses, func(i, j int) bool {
+		return productResponses[i]["productId"].(string) < productResponses[j]["productId"].(string)
+	})
+
+	// Calculate total count
+	totalCount := len(productResponses)
+
+	// Apply pagination
+	var paginatedProducts []map[string]interface{}
+	if offset < totalCount {
+		end := offset + limit
+		if end > totalCount {
+			end = totalCount
+		}
+		paginatedProducts = productResponses[offset:end]
+	} else {
+		// Offset beyond available products
+		paginatedProducts = []map[string]interface{}{}
+	}
+
+	// Create response with pagination metadata (matching Central API format)
+	response := map[string]interface{}{
+		"products": paginatedProducts,
+		"pagination": map[string]interface{}{
+			"offset":      offset,
+			"limit":       limit,
+			"total_count": totalCount,
+			"has_more":    offset+limit < totalCount,
+		},
+	}
+
+	slog.Info("Successfully retrieved products from local cache",
+		"total_count", totalCount,
+		"returned_count", len(paginatedProducts),
+		"offset", offset,
+		"limit", limit)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(products)
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetProduct handles GET /v1/store/inventory/{productId} (now using local cache)
@@ -59,19 +135,32 @@ func (h *InventoryHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to get product from local storage", "product_id", productID, "error", err)
 
 		if err.Error() == fmt.Sprintf("product not found: %s", productID) {
-			h.writeErrorResponse(w, "Product not found", http.StatusNotFound)
+			h.writeErrorResponse(w, "product_not_found", "Product not found", http.StatusNotFound, map[string]string{"productId": productID})
 			return
 		}
 
-		h.writeErrorResponse(w, "Failed to retrieve product", http.StatusInternalServerError)
+		h.writeErrorResponse(w, "storage_error", "Failed to retrieve product", http.StatusInternalServerError, nil)
 		return
 	}
 
-	slog.Info("Successfully retrieved product from local cache", "product_id", productID, "available", product.Available, "version", product.Version)
+	// Convert to consistent response format
+	productResponse := map[string]interface{}{
+		"productId":   product.ProductID,
+		"name":        product.Name,
+		"available":   product.Available,
+		"version":     product.Version,
+		"lastUpdated": product.LastUpdated.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	slog.Info("Successfully retrieved product from local cache",
+		"product_id", productID,
+		"name", product.Name,
+		"available", product.Available,
+		"version", product.Version)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(product)
+	json.NewEncoder(w).Encode(productResponse)
 }
 
 // UpdateInventory handles POST /v1/store/inventory/updates
@@ -80,7 +169,7 @@ func (h *InventoryHandler) UpdateInventory(w http.ResponseWriter, r *http.Reques
 
 	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
 		slog.Error("Failed to decode update request", "error", err)
-		h.writeErrorResponse(w, "Invalid request body", http.StatusBadRequest)
+		h.writeErrorResponse(w, "invalid_request", "Invalid request body", http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -101,7 +190,23 @@ func (h *InventoryHandler) UpdateInventory(w http.ResponseWriter, r *http.Reques
 			"product_id", updateReq.ProductID,
 			"error", err,
 		)
-		h.writeErrorResponse(w, "Failed to update inventory", http.StatusInternalServerError)
+
+		// Parse error type for better error handling
+		errorCode := "update_failed"
+		details := map[string]interface{}{
+			"productId": updateReq.ProductID,
+			"error":     err.Error(),
+		}
+
+		// Check for specific error types
+		if err.Error() == "version conflict" {
+			errorCode = "version_conflict"
+			details["expectedVersion"] = updateReq.Version
+		} else if err.Error() == "insufficient inventory" {
+			errorCode = "insufficient_inventory"
+		}
+
+		h.writeErrorResponse(w, errorCode, "Failed to update inventory", http.StatusInternalServerError, details)
 		return
 	}
 
@@ -144,7 +249,7 @@ func (h *InventoryHandler) BatchUpdateInventory(w http.ResponseWriter, r *http.R
 
 	if err := json.NewDecoder(r.Body).Decode(&batchReq); err != nil {
 		slog.Error("Failed to decode batch update request", "error", err)
-		h.writeErrorResponse(w, "Invalid request body", http.StatusBadRequest)
+		h.writeErrorResponse(w, "invalid_request", "Invalid request body", http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -165,7 +270,11 @@ func (h *InventoryHandler) BatchUpdateInventory(w http.ResponseWriter, r *http.R
 			"store_id", batchReq.StoreID,
 			"error", err,
 		)
-		h.writeErrorResponse(w, "Failed to batch update inventory", http.StatusInternalServerError)
+		h.writeErrorResponse(w, "batch_update_failed", "Failed to batch update inventory", http.StatusInternalServerError, map[string]interface{}{
+			"storeId":     batchReq.StoreID,
+			"updateCount": len(batchReq.Updates),
+			"error":       err.Error(),
+		})
 		return
 	}
 
@@ -199,7 +308,7 @@ func (h *InventoryHandler) ForceSync(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := h.syncManager.ForceSync(ctx); err != nil {
 		slog.Error("Force sync failed", "error", err)
-		h.writeErrorResponse(w, "Force sync failed", http.StatusInternalServerError)
+		h.writeErrorResponse(w, "sync_failed", "Force sync failed", http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -220,7 +329,7 @@ func (h *InventoryHandler) GetCacheStats(w http.ResponseWriter, r *http.Request)
 	stats, err := h.localStorage.GetStorageStats()
 	if err != nil {
 		slog.Error("Failed to get storage stats", "error", err)
-		h.writeErrorResponse(w, "Failed to get cache stats", http.StatusInternalServerError)
+		h.writeErrorResponse(w, "stats_error", "Failed to get cache stats", http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -229,14 +338,34 @@ func (h *InventoryHandler) GetCacheStats(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(stats)
 }
 
-// writeErrorResponse writes an error response in JSON format
-func (h *InventoryHandler) writeErrorResponse(w http.ResponseWriter, message string, statusCode int) {
+// ErrorResponse represents the standard error response format
+type ErrorResponse struct {
+	Error ErrorDetail `json:"error"`
+}
+
+type ErrorDetail struct {
+	Code    string      `json:"code"`
+	Message string      `json:"message"`
+	Details interface{} `json:"details,omitempty"`
+}
+
+// writeErrorResponse writes a structured JSON error response
+func (h *InventoryHandler) writeErrorResponse(w http.ResponseWriter, code, message string, statusCode int, details interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	errorResp := models.ErrorResponse{
-		Error: message,
+	errorResponse := ErrorResponse{
+		Error: ErrorDetail{
+			Code:    code,
+			Message: message,
+			Details: details,
+		},
 	}
 
-	json.NewEncoder(w).Encode(errorResp)
+	json.NewEncoder(w).Encode(errorResponse)
+}
+
+// writeSimpleErrorResponse writes a simple error response (for backward compatibility)
+func (h *InventoryHandler) writeSimpleErrorResponse(w http.ResponseWriter, message string, statusCode int) {
+	h.writeErrorResponse(w, "internal_error", message, statusCode, nil)
 }

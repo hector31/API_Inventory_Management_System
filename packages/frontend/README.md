@@ -12,12 +12,15 @@ A React-based frontend application for the Store S1 inventory management system.
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 
 ### Advanced Features
-- **Search & Filter**: Find products by ID or name
-- **Sorting**: Sort products by ID, stock level, or other criteria
-- **Pagination**: Navigate through large product catalogs efficiently
-- **Stock Warnings**: Visual indicators for low stock and out-of-stock items
+- **Auto-loading**: Products load automatically when page initializes
+- **Real-time Updates**: Automatic refresh every 5 seconds with countdown timer
+- **Smart Pagination**: Display 5 products per page with Previous/Next navigation
+- **Stock Status Indicators**: Color-coded availability (In Stock/Low Stock/Out of Stock)
+- **Auto-refresh Toggle**: Enable/disable automatic updates with visual feedback
+- **Silent Refresh**: Background updates without disrupting user experience
+- **Page State Persistence**: Maintains current page during auto-refresh
+- **Loading Indicators**: Visual feedback during data loading and refresh operations
 - **Sync Status**: Real-time display of synchronization status with central API
-- **Auto-refresh**: Automatic updates every 30 seconds
 - **Error Handling**: Comprehensive error messages and retry mechanisms
 
 ## 🏗️ Architecture
@@ -125,12 +128,13 @@ location /api/ {
 
 ### Manual Testing Workflow
 1. **Access the application**: http://localhost:3002
-2. **Verify product loading**: Products should appear in the grid
-3. **Test search functionality**: Search for specific product IDs
-4. **Add items to cart**: Use quantity selectors and add to cart
-5. **Modify cart contents**: Adjust quantities in the cart sidebar
-6. **Process purchase**: Click purchase button and verify success
-7. **Check real-time updates**: Verify inventory updates after purchase
+2. **Verify auto-loading**: Products should load automatically on page initialization
+3. **Test pagination**: Navigate through pages using Previous/Next buttons (5 products per page)
+4. **Observe auto-refresh**: Watch the countdown timer and automatic updates every 5 seconds
+5. **Toggle auto-refresh**: Use the checkbox to enable/disable automatic updates
+6. **Test manual refresh**: Click "Refresh Products" to force immediate update
+7. **Verify stock indicators**: Check color-coded stock status (green/yellow/red)
+8. **Check page persistence**: Ensure current page is maintained during auto-refresh
 
 ### API Testing
 ```bash
