@@ -5,6 +5,7 @@ import "time"
 // Product represents an inventory item
 type Product struct {
 	ProductID   string    `json:"productId"`
+	Name        string    `json:"name"`
 	Available   int       `json:"available"`
 	Version     int       `json:"version"`
 	LastUpdated time.Time `json:"lastUpdated"`
@@ -94,6 +95,7 @@ type Event struct {
 // ProductResponse represents product data in events
 type ProductResponse struct {
 	ProductID   string `json:"productId"`
+	Name        string `json:"name"`
 	Available   int    `json:"available"`
 	Version     int    `json:"version"`
 	LastUpdated string `json:"lastUpdated"`

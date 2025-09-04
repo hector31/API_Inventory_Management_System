@@ -139,9 +139,11 @@ func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
 	defer ms.mu.Unlock()
 
 	for _, event := range events {
-		// Convert ProductResponse to Product
+		// Since events now contain complete product information,
+		// we can create the product directly from event data
 		product := models.Product{
 			ProductID: event.Data.ProductID,
+			Name:      event.Data.Name,
 			Available: event.Data.Available,
 			Version:   event.Data.Version,
 		}
@@ -157,8 +159,11 @@ func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
 		switch event.EventType {
 		case models.EventTypeProductUpdated, models.EventTypeProductCreated:
 			ms.products[event.ProductID] = product
+
+			// Event applied successfully (debug logging can be removed in production)
 		default:
-			// Unknown event type, log but continue
+			// Unknown event type, skip processing
+			// Unknown event type, skip processing
 			continue
 		}
 

@@ -198,21 +198,40 @@ func (c *InventoryClient) GetAllProducts() ([]models.Product, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Try to parse as the expected format: {"items": [...], "nextCursor": ""}
-	var response struct {
+	// Log the response for debugging
+	fmt.Printf("DEBUG: Central API Response: %s\n", string(body))
+
+	// Try to parse as the new pagination format: {"products": [...], "pagination": {...}}
+	var paginationResponse struct {
+		Products   []models.Product `json:"products"`
+		Pagination struct {
+			Offset     int  `json:"offset"`
+			Limit      int  `json:"limit"`
+			TotalCount int  `json:"total_count"`
+			HasMore    bool `json:"has_more"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(body, &paginationResponse); err == nil {
+		// Successfully parsed as pagination format
+		return paginationResponse.Products, nil
+	}
+
+	// Try to parse as the legacy format: {"items": [...], "nextCursor": ""}
+	var legacyResponse struct {
 		Items      []models.Product `json:"items"`
 		NextCursor string           `json:"nextCursor"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		// If that fails, try to parse as a direct array
-		var directProducts []models.Product
-		if err2 := json.Unmarshal(body, &directProducts); err2 != nil {
-			return nil, fmt.Errorf("failed to decode response as object or array: %w (original: %v)", err2, err)
-		}
-		return directProducts, nil
+	if err := json.Unmarshal(body, &legacyResponse); err == nil {
+		// Successfully parsed as legacy format
+		return legacyResponse.Items, nil
 	}
 
-	return response.Items, nil
+	// If both fail, try to parse as a direct array
+	var directProducts []models.Product
+	if err := json.Unmarshal(body, &directProducts); err != nil {
+		return nil, fmt.Errorf("failed to decode response as pagination, legacy, or direct array format: %w", err)
+	}
+	return directProducts, nil
 }
 
 // GetAllProductsWithMetadata retrieves all products with metadata including event offset
@@ -242,17 +261,34 @@ func (c *InventoryClient) GetAllProductsWithMetadata() ([]models.Product, int64,
 		return nil, 0, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Parse response with metadata
-	var response struct {
+	// Try to parse as the new pagination format first
+	var paginationResponse struct {
+		Products   []models.Product `json:"products"`
+		Pagination struct {
+			Offset     int  `json:"offset"`
+			Limit      int  `json:"limit"`
+			TotalCount int  `json:"total_count"`
+			HasMore    bool `json:"has_more"`
+		} `json:"pagination"`
+		EventOffset int64 `json:"eventOffset,omitempty"`
+	}
+	if err := json.Unmarshal(body, &paginationResponse); err == nil {
+		// Successfully parsed as pagination format
+		// For now, return 0 as eventOffset since the new format doesn't include it
+		return paginationResponse.Products, 0, nil
+	}
+
+	// Parse response with legacy metadata format
+	var legacyResponse struct {
 		Items       []models.Product `json:"items"`
 		NextCursor  string           `json:"nextCursor"`
 		EventOffset int64            `json:"eventOffset"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := json.Unmarshal(body, &legacyResponse); err != nil {
 		return nil, 0, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return response.Items, response.EventOffset, nil
+	return legacyResponse.Items, legacyResponse.EventOffset, nil
 }
 
 // GetEvents retrieves events from the central inventory API

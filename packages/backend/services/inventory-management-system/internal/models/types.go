@@ -68,6 +68,7 @@ type BatchSummary struct {
 
 type ProductResponse struct {
 	ProductID   string `json:"productId"`
+	Name        string `json:"name"`
 	Available   int    `json:"available"`
 	Version     int    `json:"version"`
 	LastUpdated string `json:"lastUpdated"`
