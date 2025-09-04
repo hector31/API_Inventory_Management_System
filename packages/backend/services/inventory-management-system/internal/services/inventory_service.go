@@ -205,6 +205,7 @@ func (s *InventoryService) GetProduct(productID string) (*models.ProductResponse
 		// Convert to response structure
 		response = &models.ProductResponse{
 			ProductID:   productData.ProductID,
+			Name:        productData.Name,
 			Available:   productData.Available,
 			Version:     productData.Version,
 			LastUpdated: productData.LastUpdated,
@@ -233,6 +234,7 @@ func (s *InventoryService) ListProducts(cursor string, limit int) (*models.ListR
 	for _, productData := range s.data.Products {
 		item := models.ProductResponse{
 			ProductID:   productData.ProductID,
+			Name:        productData.Name,
 			Available:   productData.Available,
 			Version:     productData.Version,
 			LastUpdated: productData.LastUpdated,

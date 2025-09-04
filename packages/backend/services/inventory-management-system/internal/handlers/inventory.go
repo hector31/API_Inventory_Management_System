@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"inventory-management-api/internal/models"
@@ -97,20 +98,20 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 	if req.ProductID == "" {
 		slog.Warn("Missing product ID in single update")
 		return models.UpdateResponse{
-			ProductID: req.ProductID,
+			ProductID:    req.ProductID,
 			ErrorType:    services.ErrTypeMissingProductID,
 			ErrorMessage: "Missing product ID",
-			Applied:   false,
+			Applied:      false,
 		}
 	}
 
 	if req.IdempotencyKey == "" {
 		slog.Warn("Missing idempotency key in single update", "product_id", req.ProductID)
 		return models.UpdateResponse{
-			ProductID: req.ProductID,
+			ProductID:    req.ProductID,
 			ErrorType:    services.ErrTypeInvalidRequest,
 			ErrorMessage: "Missing idempotency key",
-			Applied:   false,
+			Applied:      false,
 		}
 	}
 
@@ -128,13 +129,13 @@ func (h *InventoryHandler) processSingleUpdate(req models.UpdateRequest) models.
 			"product_id", req.ProductID,
 			"error", err)
 		return models.UpdateResponse{
-			ProductID:   req.ProductID,
-			Applied:     false,
-			NewQuantity: 0,
-			NewVersion:  0,
+			ProductID:    req.ProductID,
+			Applied:      false,
+			NewQuantity:  0,
+			NewVersion:   0,
 			ErrorType:    services.ErrTypeInternalError,
 			ErrorMessage: err.Error(),
-			LastUpdated: "",
+			LastUpdated:  "",
 		}
 	}
 
@@ -291,189 +292,89 @@ func (h *InventoryHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, product)
 }
 
-// ListProducts handles GET /v1/inventory - List products with cursor pagination and replication support
+// ListProducts handles GET /v1/inventory - List products with offset-based pagination
 func (h *InventoryHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
-	cursor := r.URL.Query().Get("cursor")
+	offsetStr := r.URL.Query().Get("offset")
 	limitStr := r.URL.Query().Get("limit")
-	snapshot := r.URL.Query().Get("snapshot") == "true"
-	sinceStr := r.URL.Query().Get("since")
-	format := r.URL.Query().Get("format")
 
-	// Parse the limit (default 50)
+	// Parse offset (default 0)
+	offset := 0
+	if offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	// Parse limit (default 50, max 200)
 	limit := 50
 	if limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
+			// Cap the limit to prevent excessive resource usage
+			if limit > 200 {
+				limit = 200
+			}
 		}
 	}
 
-	// Parse since offset for replication
-	var sinceOffset int
-	if sinceStr != "" {
-		if parsedOffset, err := strconv.Atoi(sinceStr); err == nil && parsedOffset >= 0 {
-			sinceOffset = parsedOffset
-		}
-	}
-
-	slog.Debug("Listing products with parameters",
-		"cursor", cursor,
+	slog.Debug("Listing products with pagination",
+		"offset", offset,
 		"limit", limit,
-		"snapshot", snapshot,
-		"since", sinceOffset,
-		"format", format,
 		"remote_addr", r.RemoteAddr)
 
-	// Handle replication snapshot request
-	if snapshot {
-		h.handleSnapshotRequest(w, r, limit)
-		return
-	}
-
-	// Handle replication changes request
-	if sinceStr != "" {
-		h.handleChangesRequest(w, r, sinceOffset, limit)
-		return
-	}
-
-	// Handle regular product listing
-	h.handleRegularListing(w, r, cursor, limit, format)
-}
-
-// handleSnapshotRequest handles ?snapshot=true requests (replaces /replication/snapshot)
-func (h *InventoryHandler) handleSnapshotRequest(w http.ResponseWriter, r *http.Request, limit int) {
-	slog.Info("Processing snapshot request", "limit", limit, "remote_addr", r.RemoteAddr)
-
-	// Get all products for snapshot
-	productList, err := h.inventoryService.ListProducts("", limit)
+	// Get all products from inventory service using existing method
+	// We'll get all products and then apply our own pagination for deterministic results
+	productList, err := h.inventoryService.ListProducts("", 0) // Get all products (limit 0 = no limit)
 	if err != nil {
-		slog.Error("Failed to retrieve snapshot", "error", err, "remote_addr", r.RemoteAddr)
-		writeErrorResponse(w, http.StatusInternalServerError, "internal_error", "Error retrieving snapshot", nil)
+		slog.Error("Failed to get products from inventory service", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Get system metadata for last offset
-	metadata := h.inventoryService.GetSystemMetadata()
+	// Convert to slice and sort by product_id for deterministic pagination
+	allProducts := productList.Items
+	sort.Slice(allProducts, func(i, j int) bool {
+		return allProducts[i].ProductID < allProducts[j].ProductID
+	})
 
-	// Create snapshot response
-	snapshotResponse := map[string]interface{}{
-		"state":      make(map[string]models.ProductResponse),
-		"lastOffset": metadata.LastOffset,
-		"timestamp":  metadata.LastUpdated,
-		"total":      len(productList.Items),
-	}
+	// Calculate total count
+	totalCount := len(allProducts)
 
-	// Convert items to state map
-	stateMap := make(map[string]models.ProductResponse)
-	for _, product := range productList.Items {
-		stateMap[product.ProductID] = product
-	}
-	snapshotResponse["state"] = stateMap
-
-	slog.Info("Snapshot generated successfully",
-		"products_count", len(productList.Items),
-		"last_offset", metadata.LastOffset,
-		"remote_addr", r.RemoteAddr)
-
-	writeJSONResponse(w, http.StatusOK, snapshotResponse)
-}
-
-// handleChangesRequest handles ?since=<offset> requests (replaces /replication/changes)
-func (h *InventoryHandler) handleChangesRequest(w http.ResponseWriter, r *http.Request, sinceOffset, limit int) {
-	longPollStr := r.URL.Query().Get("longPollSeconds")
-
-	slog.Info("Processing changes request",
-		"since_offset", sinceOffset,
-		"limit", limit,
-		"long_poll", longPollStr,
-		"remote_addr", r.RemoteAddr)
-
-	// Get system metadata for current offset
-	metadata := h.inventoryService.GetSystemMetadata()
-
-	// Create changes response (placeholder implementation)
-	changesResponse := map[string]interface{}{
-		"events":     []map[string]interface{}{}, // Empty for now - would contain actual change events
-		"nextOffset": metadata.LastOffset,
-		"hasMore":    false,
-		"timestamp":  metadata.LastUpdated,
-	}
-
-	// If there are changes since the requested offset, we would populate events here
-	if sinceOffset < metadata.LastOffset {
-		// Placeholder event - in real implementation, this would come from event store
-		events := []map[string]interface{}{
-			{
-				"seq":        metadata.LastOffset,
-				"type":       "StockChanged",
-				"productId":  "SKU-001",
-				"storeId":    "store-1",
-				"delta":      1,
-				"newVersion": 13,
-				"timestamp":  metadata.LastUpdated,
-			},
+	// Apply pagination
+	var paginatedProducts []models.ProductResponse
+	if offset < totalCount {
+		end := offset + limit
+		if end > totalCount {
+			end = totalCount
 		}
-		changesResponse["events"] = events
+		paginatedProducts = allProducts[offset:end]
+	} else {
+		// Offset beyond available products
+		paginatedProducts = []models.ProductResponse{}
 	}
 
-	slog.Info("Changes response generated",
-		"since_offset", sinceOffset,
-		"current_offset", metadata.LastOffset,
-		"events_count", len(changesResponse["events"].([]map[string]interface{})),
-		"remote_addr", r.RemoteAddr)
+	// Create response with pagination metadata
+	response := map[string]interface{}{
+		"products": paginatedProducts,
+		"pagination": map[string]interface{}{
+			"offset":      offset,
+			"limit":       limit,
+			"total_count": totalCount,
+			"has_more":    offset+limit < totalCount,
+		},
+	}
 
-	writeJSONResponse(w, http.StatusOK, changesResponse)
-}
-
-// handleRegularListing handles standard product listing requests
-func (h *InventoryHandler) handleRegularListing(w http.ResponseWriter, r *http.Request, cursor string, limit int, format string) {
-	// Get the product list from the service
-	productList, err := h.inventoryService.ListProducts(cursor, limit)
-	if err != nil {
-		slog.Error("Failed to retrieve products", "error", err, "remote_addr", r.RemoteAddr)
-		writeErrorResponse(w, http.StatusInternalServerError, "internal_error", "Error retrieving products", nil)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("Failed to encode response", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Handle replication format
-	if format == "replication" {
-		// Return in replication-friendly format with metadata
-		metadata := h.inventoryService.GetSystemMetadata()
-		replicationResponse := map[string]interface{}{
-			"items":      productList.Items,
-			"nextCursor": productList.NextCursor,
-			"metadata": map[string]interface{}{
-				"lastOffset":    metadata.LastOffset,
-				"totalProducts": metadata.TotalProducts,
-				"lastUpdated":   metadata.LastUpdated,
-			},
-		}
-
-		slog.Info("Products listed in replication format",
-			"cursor", cursor,
-			"limit", limit,
-			"found_count", len(productList.Items),
-			"last_offset", metadata.LastOffset,
-			"remote_addr", r.RemoteAddr)
-
-		writeJSONResponse(w, http.StatusOK, replicationResponse)
-		return
-	}
-
-	// Standard response format with event offset for synchronization
-	metadata := h.inventoryService.GetSystemMetadata()
-	standardResponse := map[string]interface{}{
-		"items":       productList.Items,
-		"nextCursor":  productList.NextCursor,
-		"eventOffset": metadata.LastOffset, // Current event offset for synchronization
-	}
-
-	slog.Info("Products listed successfully",
-		"cursor", cursor,
-		"limit", limit,
-		"found_count", len(productList.Items),
-		"event_offset", metadata.LastOffset,
-		"remote_addr", r.RemoteAddr)
-
-	writeJSONResponse(w, http.StatusOK, standardResponse)
+	slog.Debug("Successfully returned products",
+		"returned_count", len(paginatedProducts),
+		"total_count", totalCount,
+		"offset", offset,
+		"limit", limit)
 }

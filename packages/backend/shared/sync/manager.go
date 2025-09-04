@@ -85,13 +85,23 @@ func (m *Manager) InitialSync(ctx context.Context) error {
 	m.updateSyncStatus(true, false, 0, "", time.Time{})
 
 	// Get all products from central API
+	m.logger.Info("Attempting to get products from central API")
 	products, err := m.client.GetAllProducts()
 	if err != nil {
+		m.logger.Error("Failed to get products from central API", "error", err)
 		m.updateSyncStatus(false, false, 0, err.Error(), time.Time{})
 		return fmt.Errorf("failed to get products from central API: %w", err)
 	}
 
 	m.logger.Info("Retrieved products from central API", "count", len(products))
+
+	// Log first product for debugging
+	if len(products) > 0 {
+		m.logger.Info("First product sample",
+			"productId", products[0].ProductID,
+			"name", products[0].Name,
+			"available", products[0].Available)
+	}
 
 	// Sync all products to local storage
 	if err := m.localStorage.SyncAllProducts(products); err != nil {
