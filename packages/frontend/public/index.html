@@ -608,11 +608,16 @@
           <span>Last Update:</span>
           <span id="last-update">-</span>
         </div>
+        <div class="status-item">
+          <span>Auto-Refresh:</span>
+          <span id="auto-refresh-status">🔄 Active (5s)</span>
+        </div>
       </div>
 
       <div style="text-align: center;">
         <button class="btn" onclick="testAPI()" id="test-api-btn">🔄 Test Store API</button>
         <button class="btn" onclick="loadProducts(false)">📦 Refresh Products</button>
+        <button class="btn" onclick="toggleAutoRefresh()" id="auto-refresh-toggle">⏸️ Pause Auto-Refresh</button>
         <button class="btn" onclick="testHealth()">❤️ Health Check</button>
         <button class="btn" onclick="currentPage=1; loadProducts(false)">🏠 Reset to Page 1</button>
         <button class="btn cart-btn" onclick="toggleCart()">🛒 Cart (<span id="cart-count">0</span>)</button>
@@ -710,6 +715,11 @@
       let productsPerPage = 5;
       let allProducts = [];
       let lastRefreshTime = null;
+
+      // Auto-refresh state
+      let autoRefreshInterval = null;
+      let autoRefreshEnabled = true;
+      const AUTO_REFRESH_INTERVAL_MS = 5000; // 5 seconds
 
       // Shopping cart state
       let cart = [];
@@ -938,17 +948,28 @@
       async function confirmPurchase() {
         if (cart.length === 0) return;
 
-        showLoadingOverlay('Processing purchase...');
+        console.log(`🛒 Starting purchase process for ${cart.length} items`);
+
+        // Pause auto-refresh during purchase to avoid conflicts
+        const wasAutoRefreshEnabled = autoRefreshEnabled;
+        if (autoRefreshEnabled) {
+          console.log('⏸️ Temporarily pausing auto-refresh during purchase');
+          stopAutoRefresh();
+        }
+
+        showLoadingOverlay('Initializing purchase...');
         closePurchaseModal();
 
         const purchaseResults = [];
         let successCount = 0;
         let failureCount = 0;
+        const failureDetails = [];
 
         try {
-          // Process each item in the cart
+          // Process each item in the cart sequentially to avoid overwhelming the API
           for (let i = 0; i < cart.length; i++) {
             const item = cart[i];
+            console.log(`🔄 Processing item ${i + 1}/${cart.length}: ${item.productName}`);
             showLoadingOverlay(`Processing ${item.productName} (${i + 1}/${cart.length})...`);
 
             const result = await processPurchaseItem(item);
@@ -956,16 +977,30 @@
 
             if (result.success) {
               successCount++;
+              console.log(`✅ Successfully purchased ${item.productName} after ${result.totalAttempts} attempts`);
             } else {
               failureCount++;
+              failureDetails.push({
+                productName: item.productName,
+                error: result.error,
+                message: result.message,
+                attempts: result.totalAttempts
+              });
+              console.error(`❌ Failed to purchase ${item.productName} after ${result.totalAttempts} attempts:`, result.error);
+            }
+
+            // Small delay between items to prevent API overload
+            if (i < cart.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 200));
             }
           }
 
-          // Show results
+          // Show results with detailed feedback
           hideLoadingOverlay();
 
           if (failureCount === 0) {
-            showMessage(`🎉 Purchase successful! ${successCount} items purchased.`, 'success');
+            const totalAttempts = purchaseResults.reduce((sum, r) => sum + r.totalAttempts, 0);
+            showMessage(`🎉 Purchase successful! ${successCount} items purchased (${totalAttempts} total API calls).`, 'success');
             cart = []; // Clear cart on successful purchase
             updateCartDisplay();
             toggleCart(); // Close cart
@@ -973,9 +1008,14 @@
             // Refresh products to show updated inventory
             setTimeout(() => loadProducts(true), 1000);
           } else if (successCount === 0) {
-            showMessage(`❌ Purchase failed for all items. Please try again.`, 'error');
+            // All items failed - provide detailed error information
+            const errorSummary = generateErrorSummary(failureDetails);
+            showMessage(`❌ Purchase failed for all items. ${errorSummary}`, 'error');
+            console.error('All purchase attempts failed:', failureDetails);
           } else {
-            showMessage(`⚠️ Partial success: ${successCount} items purchased, ${failureCount} failed.`, 'warning');
+            // Partial success - provide detailed feedback
+            const errorSummary = generateErrorSummary(failureDetails);
+            showMessage(`⚠️ Partial success: ${successCount} items purchased, ${failureCount} failed. ${errorSummary}`, 'warning');
 
             // Remove successful items from cart
             cart = cart.filter(cartItem => {
@@ -984,20 +1024,76 @@
             });
             updateCartDisplay();
 
-            // Refresh products
+            // Refresh products to show updated inventory
             setTimeout(() => loadProducts(true), 1000);
           }
 
+          // Log detailed results for debugging
+          console.log('📊 Purchase Results Summary:', {
+            total: cart.length,
+            successful: successCount,
+            failed: failureCount,
+            results: purchaseResults
+          });
+
         } catch (error) {
           hideLoadingOverlay();
-          console.error('Purchase error:', error);
-          showMessage('❌ Purchase failed due to system error. Please try again.', 'error');
+          console.error('❌ Unexpected error during purchase process:', error);
+          showMessage('❌ Purchase failed due to unexpected system error. Please try again.', 'error');
+        } finally {
+          // Resume auto-refresh after purchase process completes
+          if (wasAutoRefreshEnabled) {
+            console.log('▶️ Resuming auto-refresh after purchase');
+            autoRefreshEnabled = true;
+            setTimeout(() => {
+              startAutoRefresh();
+            }, 2000); // Wait 2 seconds before resuming to allow for any final updates
+          }
         }
       }
 
-      async function processPurchaseItem(item, maxRetries = 3) {
+      // Generate user-friendly error summary
+      function generateErrorSummary(failureDetails) {
+        if (failureDetails.length === 0) return '';
+
+        const errorCounts = {};
+        failureDetails.forEach(failure => {
+          const errorType = failure.error;
+          errorCounts[errorType] = (errorCounts[errorType] || 0) + 1;
+        });
+
+        const errorMessages = [];
+        if (errorCounts.insufficient_inventory) {
+          errorMessages.push(`${errorCounts.insufficient_inventory} item(s) out of stock`);
+        }
+        if (errorCounts.version_conflict) {
+          errorMessages.push(`${errorCounts.version_conflict} item(s) had version conflicts`);
+        }
+        if (errorCounts.network_error) {
+          errorMessages.push(`${errorCounts.network_error} item(s) had network issues`);
+        }
+        if (errorCounts.max_retries_exceeded) {
+          errorMessages.push(`${errorCounts.max_retries_exceeded} item(s) exceeded retry limit`);
+        }
+
+        const otherErrors = Object.keys(errorCounts).filter(key =>
+          !['insufficient_inventory', 'version_conflict', 'network_error', 'max_retries_exceeded'].includes(key)
+        );
+        if (otherErrors.length > 0) {
+          const otherCount = otherErrors.reduce((sum, key) => sum + errorCounts[key], 0);
+          errorMessages.push(`${otherCount} item(s) had other errors`);
+        }
+
+        return errorMessages.length > 0 ? `Issues: ${errorMessages.join(', ')}.` : '';
+      }
+
+      // Enhanced purchase processing with robust retry logic and exponential backoff
+      async function processPurchaseItem(item, maxRetries = 5) {
         let attempt = 0;
         let currentVersion = item.version;
+        const baseDelay = 1000; // Base delay of 1 second
+
+        console.log(`🛒 Starting purchase process for ${item.productName} (max retries: ${maxRetries})`);
 
         while (attempt < maxRetries) {
           attempt++;
@@ -1015,22 +1111,36 @@
               idempotencyKey: idempotencyKey
             };
 
-            console.log(`Purchase attempt ${attempt} for ${item.productName}:`, purchaseRequest);
+            console.log(`🔄 Purchase attempt ${attempt}/${maxRetries} for ${item.productName}:`, purchaseRequest);
 
-            // Send purchase request to Store API
+            // Send purchase request to Store API with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
             const response = await fetch('/api/inventory/updates', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'X-API-Key': API_KEY
               },
-              body: JSON.stringify(purchaseRequest)
+              body: JSON.stringify(purchaseRequest),
+              signal: controller.signal
             });
 
-            const responseData = await response.json();
+            clearTimeout(timeoutId);
 
+            // Handle different response scenarios
+            let responseData;
+            try {
+              responseData = await response.json();
+            } catch (jsonError) {
+              console.error(`❌ Failed to parse JSON response for ${item.productName}:`, jsonError);
+              throw new Error(`Invalid JSON response: ${response.status} ${response.statusText}`);
+            }
+
+            // Success case
             if (response.ok && responseData.applied) {
-              console.log(`Purchase successful for ${item.productName}:`, responseData);
+              console.log(`✅ Purchase successful for ${item.productName} on attempt ${attempt}:`, responseData);
               return {
                 success: true,
                 productId: item.productId,
@@ -1038,110 +1148,456 @@
                 quantity: item.quantity,
                 newQuantity: responseData.newQuantity,
                 newVersion: responseData.newVersion,
-                attempt: attempt
+                attempt: attempt,
+                totalAttempts: attempt
               };
-            } else if (response.status === 409 || responseData.errorType === 'version_conflict') {
-              // Version conflict - fetch current product data and retry
-              console.log(`Version conflict for ${item.productName}, fetching current data...`);
+            }
 
-              const currentProduct = await fetchCurrentProductData(item.productId);
-              if (currentProduct && currentProduct.version) {
-                currentVersion = currentProduct.version;
-                console.log(`Updated version for ${item.productName}: ${currentVersion}`);
+            // Enhanced error type detection
+            const errorType = detectErrorType(response, responseData);
+            const errorMessage = responseData.errorMessage || responseData.message || `HTTP ${response.status}`;
 
-                // Check if there's still enough inventory
-                if (currentProduct.available < item.quantity) {
+            console.log(`⚠️ Purchase attempt ${attempt} failed for ${item.productName}:`, {
+              status: response.status,
+              detectedErrorType: errorType,
+              originalErrorType: responseData.errorType,
+              errorMessage,
+              fullResponse: responseData
+            });
+
+            // Version conflict - extract version from error response for immediate retry
+            if (errorType === 'version_conflict') {
+              console.log(`🔄 Version conflict detected for ${item.productName}, extracting version from error response...`);
+
+              // Extract version information from error response
+              const versionInfo = extractVersionFromErrorResponse(responseData);
+
+              // Validate the extracted version information
+              const validation = validateVersionInfo(versionInfo, currentVersion);
+
+              if (validation.isValid) {
+                const oldVersion = currentVersion;
+                currentVersion = validation.newVersion;
+                console.log(`📝 Successfully extracted and validated version for ${item.productName}: ${oldVersion} → ${currentVersion}`);
+
+                // Check if inventory information is available and sufficient
+                if (validation.newQuantity !== null && validation.newQuantity < item.quantity) {
+                  console.log(`❌ Insufficient inventory from error response for ${item.productName}: available=${validation.newQuantity}, requested=${item.quantity}`);
                   return {
                     success: false,
                     productId: item.productId,
                     productName: item.productName,
                     error: 'insufficient_inventory',
-                    message: `Insufficient inventory. Available: ${currentProduct.available}, Requested: ${item.quantity}`,
-                    attempt: attempt
+                    message: `Insufficient inventory after version conflict. Available: ${validation.newQuantity}, Requested: ${item.quantity}`,
+                    attempt: attempt,
+                    totalAttempts: attempt,
+                    extractedFromErrorResponse: true
                   };
                 }
 
-                // Continue to next attempt with updated version
+                // Calculate exponential backoff delay for version conflicts
+                const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 8000); // Max 8 seconds
+                console.log(`⏳ Waiting ${delay}ms before retry with extracted version...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+
+                // Continue to next attempt with updated version from error response
                 continue;
               } else {
-                return {
-                  success: false,
-                  productId: item.productId,
-                  productName: item.productName,
-                  error: 'version_fetch_failed',
-                  message: 'Failed to fetch current product version',
-                  attempt: attempt
-                };
+                // Fallback: fetch current product data if version extraction fails
+                console.log(`⚠️ Version extraction failed (${validation.reason}), falling back to API fetch...`);
+
+                const currentProduct = await fetchCurrentProductDataWithRetry(item.productId, 2);
+
+                if (currentProduct && currentProduct.version) {
+                  const oldVersion = currentVersion;
+                  currentVersion = currentProduct.version;
+                  console.log(`📝 Fallback: Updated version for ${item.productName}: ${oldVersion} → ${currentVersion}`);
+
+                  // Check inventory
+                  if (currentProduct.available < item.quantity) {
+                    console.log(`❌ Insufficient inventory after fallback fetch for ${item.productName}: available=${currentProduct.available}, requested=${item.quantity}`);
+                    return {
+                      success: false,
+                      productId: item.productId,
+                      productName: item.productName,
+                      error: 'insufficient_inventory',
+                      message: `Insufficient inventory after version conflict. Available: ${currentProduct.available}, Requested: ${item.quantity}`,
+                      attempt: attempt,
+                      totalAttempts: attempt,
+                      usedFallback: true
+                    };
+                  }
+
+                  // Continue with fallback version
+                  const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 8000);
+                  console.log(`⏳ Waiting ${delay}ms before retry with fallback version...`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                  continue;
+                } else {
+                  console.error(`❌ Version extraction failed (${validation.reason}) and fallback fetch failed for ${item.productName}`);
+                  return {
+                    success: false,
+                    productId: item.productId,
+                    productName: item.productName,
+                    error: 'version_resolution_failed',
+                    message: `Version conflict resolution failed: ${validation.reason}. Fallback API fetch also failed.`,
+                    attempt: attempt,
+                    totalAttempts: attempt,
+                    extractionFailureReason: validation.reason
+                  };
+                }
               }
-            } else if (responseData.errorType === 'insufficient_inventory') {
+            }
+
+            // Non-retryable errors - return immediately
+            if (errorType === 'insufficient_inventory') {
+              console.log(`❌ Insufficient inventory for ${item.productName} - not retrying`);
               return {
                 success: false,
                 productId: item.productId,
                 productName: item.productName,
                 error: 'insufficient_inventory',
-                message: responseData.errorMessage || 'Insufficient inventory',
-                attempt: attempt
+                message: errorMessage,
+                attempt: attempt,
+                totalAttempts: attempt
               };
-            } else {
-              // Other error
+            }
+
+            // Server errors (5xx) - retry with exponential backoff
+            if (response.status >= 500) {
+              console.log(`🔄 Server error (${response.status}) for ${item.productName} - will retry`);
+              const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 8000);
+              console.log(`⏳ Waiting ${delay}ms before retry due to server error...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+
+            // Client errors (4xx except 409) - usually not retryable
+            if (response.status >= 400 && response.status < 500) {
+              console.log(`❌ Client error (${response.status}) for ${item.productName} - not retrying`);
               return {
                 success: false,
                 productId: item.productId,
                 productName: item.productName,
-                error: responseData.errorType || 'unknown_error',
-                message: responseData.errorMessage || `HTTP ${response.status}`,
-                attempt: attempt
+                error: errorType,
+                message: errorMessage,
+                attempt: attempt,
+                totalAttempts: attempt
               };
             }
 
-          } catch (error) {
-            console.error(`Purchase attempt ${attempt} failed for ${item.productName}:`, error);
+            // Other errors - retry with backoff
+            console.log(`🔄 Unknown error for ${item.productName} - will retry`);
+            const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 8000);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
 
+          } catch (error) {
+            console.error(`❌ Network/Exception error on attempt ${attempt} for ${item.productName}:`, error);
+
+            // Handle specific error types
+            if (error.name === 'AbortError') {
+              console.log(`⏰ Request timeout for ${item.productName} on attempt ${attempt}`);
+            } else if (error.message && error.message.includes('fetch')) {
+              console.log(`🌐 Network error for ${item.productName} on attempt ${attempt}`);
+            }
+
+            // If this is the last attempt, return the error
             if (attempt === maxRetries) {
+              console.error(`❌ Final attempt failed for ${item.productName}`);
               return {
                 success: false,
                 productId: item.productId,
                 productName: item.productName,
                 error: 'network_error',
                 message: error.message || 'Network error',
-                attempt: attempt
+                attempt: attempt,
+                totalAttempts: attempt
               };
             }
 
-            // Wait before retry
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            // Calculate exponential backoff for network errors
+            const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 8000);
+            console.log(`⏳ Waiting ${delay}ms before retry due to network error...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
 
+        // Max retries exceeded
+        console.error(`❌ Max retries (${maxRetries}) exceeded for ${item.productName}`);
         return {
           success: false,
           productId: item.productId,
           productName: item.productName,
           error: 'max_retries_exceeded',
           message: `Failed after ${maxRetries} attempts`,
-          attempt: maxRetries
+          attempt: maxRetries,
+          totalAttempts: maxRetries
         };
       }
 
-      async function fetchCurrentProductData(productId) {
-        try {
-          const response = await fetch(`/api/inventory/${productId}`, {
-            headers: {
-              'X-API-Key': API_KEY
-            }
-          });
+      // Enhanced product data fetching with retry logic
+      async function fetchCurrentProductDataWithRetry(productId, maxRetries = 3) {
+        console.log(`📡 Fetching current product data for ${productId} (max retries: ${maxRetries})`);
 
-          if (response.ok) {
-            const product = await response.json();
-            return product;
-          } else {
-            console.error(`Failed to fetch current data for ${productId}:`, response.status);
-            return null;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            console.log(`🔄 Fetch attempt ${attempt}/${maxRetries} for product ${productId}`);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+            const response = await fetch(`/api/inventory/${productId}`, {
+              headers: {
+                'X-API-Key': API_KEY
+              },
+              signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              const product = await response.json();
+              console.log(`✅ Successfully fetched current data for ${productId}:`, {
+                version: product.version,
+                available: product.available
+              });
+              return product;
+            } else {
+              console.error(`❌ Failed to fetch current data for ${productId} on attempt ${attempt}:`, response.status);
+
+              // If this is the last attempt or it's a client error, don't retry
+              if (attempt === maxRetries || (response.status >= 400 && response.status < 500)) {
+                return null;
+              }
+
+              // Wait before retry for server errors
+              const delay = 1000 * attempt;
+              console.log(`⏳ Waiting ${delay}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          } catch (error) {
+            console.error(`❌ Error fetching current data for ${productId} on attempt ${attempt}:`, error);
+
+            if (attempt === maxRetries) {
+              return null;
+            }
+
+            // Wait before retry
+            const delay = 1000 * attempt;
+            console.log(`⏳ Waiting ${delay}ms before retry due to error...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
-        } catch (error) {
-          console.error(`Error fetching current data for ${productId}:`, error);
-          return null;
         }
+
+        console.error(`❌ Failed to fetch current data for ${productId} after ${maxRetries} attempts`);
+        return null;
+      }
+
+      // Legacy function for backward compatibility
+      async function fetchCurrentProductData(productId) {
+        return await fetchCurrentProductDataWithRetry(productId, 1);
+      }
+
+      // Extract version information from error response
+      function extractVersionFromErrorResponse(responseData) {
+        console.log(`🔍 Extracting version from error response:`, responseData);
+
+        try {
+          // Initialize result object
+          const result = {
+            newVersion: null,
+            newQuantity: null,
+            productId: null,
+            errorType: null,
+            errorMessage: null
+          };
+
+          // Method 1: Direct fields in response (simple format)
+          if (responseData.newVersion) {
+            result.newVersion = responseData.newVersion;
+            result.newQuantity = responseData.newQuantity;
+            result.productId = responseData.productId;
+            result.errorType = responseData.errorType;
+            result.errorMessage = responseData.errorMessage;
+            console.log(`✅ Extracted version from direct fields:`, result);
+            return result;
+          }
+
+          // Method 2: Nested in error object (complex format)
+          if (responseData.error && responseData.error.details) {
+            const details = responseData.error.details;
+
+            // Check if details contains a JSON string that needs parsing
+            if (typeof details.error === 'string') {
+              try {
+                // Parse the nested JSON string
+                const nestedData = JSON.parse(details.error.split('status 409: ')[1].split('\\n')[0]);
+                result.newVersion = nestedData.newVersion;
+                result.newQuantity = nestedData.newQuantity;
+                result.productId = nestedData.productId || details.productId;
+                result.errorType = nestedData.errorType;
+                result.errorMessage = nestedData.errorMessage;
+                console.log(`✅ Extracted version from nested JSON:`, result);
+                return result;
+              } catch (parseError) {
+                console.warn(`⚠️ Failed to parse nested JSON in error details:`, parseError);
+              }
+            }
+
+            // Check if details has direct fields
+            if (details.newVersion) {
+              result.newVersion = details.newVersion;
+              result.newQuantity = details.newQuantity;
+              result.productId = details.productId;
+              result.errorType = details.errorType;
+              result.errorMessage = details.errorMessage;
+              console.log(`✅ Extracted version from error details:`, result);
+              return result;
+            }
+          }
+
+          // Method 3: Look for version in error message patterns
+          const errorMessage = responseData.errorMessage || responseData.message || '';
+
+          // Pattern: "version conflict: expected X, got Y"
+          const versionPattern = /version conflict: expected (\d+), got (\d+)/i;
+          const versionMatch = errorMessage.match(versionPattern);
+
+          if (versionMatch) {
+            result.newVersion = parseInt(versionMatch[1], 10); // Expected version
+            result.errorType = 'version_conflict';
+            result.errorMessage = errorMessage;
+            console.log(`✅ Extracted version from error message pattern:`, result);
+            return result;
+          }
+
+          // Method 4: Look for JSON embedded in error message
+          const jsonPattern = /\{[^}]*"newVersion"\s*:\s*(\d+)[^}]*\}/i;
+          const jsonMatch = errorMessage.match(jsonPattern);
+
+          if (jsonMatch) {
+            try {
+              const embeddedJson = JSON.parse(jsonMatch[0]);
+              result.newVersion = embeddedJson.newVersion;
+              result.newQuantity = embeddedJson.newQuantity;
+              result.productId = embeddedJson.productId;
+              result.errorType = embeddedJson.errorType;
+              result.errorMessage = embeddedJson.errorMessage;
+              console.log(`✅ Extracted version from embedded JSON:`, result);
+              return result;
+            } catch (parseError) {
+              console.warn(`⚠️ Failed to parse embedded JSON:`, parseError);
+            }
+          }
+
+          console.warn(`⚠️ Could not extract version information from error response`);
+          return result;
+
+        } catch (error) {
+          console.error(`❌ Error while extracting version from response:`, error);
+          return {
+            newVersion: null,
+            newQuantity: null,
+            productId: null,
+            errorType: null,
+            errorMessage: null
+          };
+        }
+      }
+
+      // Validate and sanitize extracted version information
+      function validateVersionInfo(versionInfo, currentVersion) {
+        if (!versionInfo || typeof versionInfo !== 'object') {
+          return { isValid: false, reason: 'Invalid version info object' };
+        }
+
+        // Check if newVersion is a valid number
+        if (versionInfo.newVersion === null || versionInfo.newVersion === undefined) {
+          return { isValid: false, reason: 'No version information found' };
+        }
+
+        const newVersion = parseInt(versionInfo.newVersion, 10);
+        if (isNaN(newVersion) || newVersion < 1) {
+          return { isValid: false, reason: `Invalid version number: ${versionInfo.newVersion}` };
+        }
+
+        // Check if the new version is actually different from current
+        if (newVersion === currentVersion) {
+          return { isValid: false, reason: `New version (${newVersion}) is same as current version (${currentVersion})` };
+        }
+
+        // Validate quantity if provided
+        if (versionInfo.newQuantity !== null && versionInfo.newQuantity !== undefined) {
+          const newQuantity = parseInt(versionInfo.newQuantity, 10);
+          if (isNaN(newQuantity) || newQuantity < 0) {
+            return { isValid: false, reason: `Invalid quantity: ${versionInfo.newQuantity}` };
+          }
+        }
+
+        return {
+          isValid: true,
+          newVersion: newVersion,
+          newQuantity: versionInfo.newQuantity !== null ? parseInt(versionInfo.newQuantity, 10) : null
+        };
+      }
+
+      // Enhanced error type detection
+      function detectErrorType(response, responseData) {
+        // Check HTTP status first
+        if (response.status === 409) {
+          return 'version_conflict';
+        }
+
+        // Check explicit error type in response
+        if (responseData.errorType) {
+          return responseData.errorType;
+        }
+
+        // Check nested error type
+        if (responseData.error && responseData.error.details && responseData.error.details.errorType) {
+          return responseData.error.details.errorType;
+        }
+
+        // Check error code
+        if (responseData.error && responseData.error.code) {
+          const code = responseData.error.code.toLowerCase();
+          if (code.includes('version') || code.includes('conflict')) {
+            return 'version_conflict';
+          }
+          if (code.includes('inventory') || code.includes('stock')) {
+            return 'insufficient_inventory';
+          }
+          if (code.includes('update_failed')) {
+            // For generic update_failed, try to determine from message
+            const message = (responseData.error.message || '').toLowerCase();
+            if (message.includes('version conflict')) {
+              return 'version_conflict';
+            }
+            if (message.includes('insufficient') || message.includes('stock')) {
+              return 'insufficient_inventory';
+            }
+          }
+        }
+
+        // Check error message patterns
+        const errorMessage = (responseData.errorMessage || responseData.message || '').toLowerCase();
+        if (errorMessage.includes('version conflict')) {
+          return 'version_conflict';
+        }
+        if (errorMessage.includes('insufficient') || errorMessage.includes('stock')) {
+          return 'insufficient_inventory';
+        }
+
+        // Default based on HTTP status
+        if (response.status >= 500) {
+          return 'server_error';
+        }
+        if (response.status >= 400) {
+          return 'client_error';
+        }
+
+        return 'unknown_error';
       }
 
       // Update last update time
@@ -1149,7 +1605,64 @@
         document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
       }
 
-      // Auto-refresh functionality removed for cleaner user experience
+      // Auto-refresh functionality - refreshes products every 5 seconds
+      function startAutoRefresh() {
+        if (autoRefreshInterval) {
+          clearInterval(autoRefreshInterval);
+        }
+
+        if (!autoRefreshEnabled) {
+          console.log('🔄 Auto-refresh is disabled');
+          return;
+        }
+
+        console.log(`🔄 Starting auto-refresh every ${AUTO_REFRESH_INTERVAL_MS / 1000} seconds`);
+
+        autoRefreshInterval = setInterval(() => {
+          if (!isLoading && autoRefreshEnabled) {
+            console.log('🔄 Auto-refreshing products...');
+            loadProducts(true); // Silent refresh
+          } else if (isLoading) {
+            console.log('⏳ Skipping auto-refresh - already loading');
+          }
+        }, AUTO_REFRESH_INTERVAL_MS);
+      }
+
+      function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+          console.log('⏹️ Stopping auto-refresh');
+          clearInterval(autoRefreshInterval);
+          autoRefreshInterval = null;
+        }
+      }
+
+      function toggleAutoRefresh() {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        updateAutoRefreshUI();
+
+        if (autoRefreshEnabled) {
+          startAutoRefresh();
+          showMessage('🔄 Auto-refresh enabled (every 5 seconds)', 'success');
+        } else {
+          stopAutoRefresh();
+          showMessage('⏸️ Auto-refresh paused', 'warning');
+        }
+
+        console.log(`🔄 Auto-refresh ${autoRefreshEnabled ? 'enabled' : 'disabled'}`);
+      }
+
+      function updateAutoRefreshUI() {
+        const toggleBtn = document.getElementById('auto-refresh-toggle');
+        const statusEl = document.getElementById('auto-refresh-status');
+
+        if (autoRefreshEnabled) {
+          if (toggleBtn) toggleBtn.textContent = '⏸️ Pause Auto-Refresh';
+          if (statusEl) statusEl.textContent = '🔄 Active (5s)';
+        } else {
+          if (toggleBtn) toggleBtn.textContent = '▶️ Resume Auto-Refresh';
+          if (statusEl) statusEl.textContent = '⏸️ Paused';
+        }
+      }
 
       // Update last refresh display
       function updateLastRefreshDisplay() {
@@ -1702,6 +2215,9 @@
         // Initialize last refresh display
         updateLastRefreshDisplay();
 
+        // Initialize auto-refresh UI
+        updateAutoRefreshUI();
+
         // Update last refresh display every 30 seconds
         setInterval(updateLastRefreshDisplay, 30000);
 
@@ -1709,6 +2225,11 @@
         setTimeout(() => {
           loadProducts();
           testAPI();
+
+          // Start auto-refresh after initial load
+          setTimeout(() => {
+            startAutoRefresh();
+          }, 1000);
         }, 500);
 
         // Fallback: Force load after 2 seconds if nothing is displayed
