@@ -10,6 +10,7 @@ import (
 
 	"inventory-management-api/internal/models"
 	"inventory-management-api/internal/services"
+	"inventory-management-api/internal/telemetry"
 
 	"github.com/gorilla/mux"
 )
@@ -46,12 +47,17 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, code, message str
 
 // UpdateInventory handles POST /v1/inventory/updates - Mutate stock (single or batch)
 func (h *InventoryHandler) UpdateInventory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	var req models.UpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		slog.Warn("Invalid JSON in update request", "error", err, "remote_addr", r.RemoteAddr)
 		writeErrorResponse(w, http.StatusBadRequest, "bad_request", "Invalid JSON", nil)
 		return
 	}
+
+	// Set telemetry context data for the middleware to pick up
+	ctx = telemetry.SetStoreID(ctx, req.StoreID)
 
 	// Determine if this is a single update or batch update
 	if len(req.Updates) > 0 {
@@ -294,6 +300,8 @@ func (h *InventoryHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 
 // ListProducts handles GET /v1/inventory - List products with offset-based pagination
 func (h *InventoryHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	// Parse query parameters
 	offsetStr := r.URL.Query().Get("offset")
 	limitStr := r.URL.Query().Get("limit")
@@ -353,6 +361,9 @@ func (h *InventoryHandler) ListProducts(w http.ResponseWriter, r *http.Request) 
 		// Offset beyond available products
 		paginatedProducts = []models.ProductResponse{}
 	}
+
+	// Set telemetry context data for the middleware to pick up
+	ctx = telemetry.SetProductCount(ctx, len(paginatedProducts))
 
 	// Create response with pagination metadata
 	response := map[string]interface{}{
