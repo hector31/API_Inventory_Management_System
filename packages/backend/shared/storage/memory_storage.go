@@ -146,6 +146,7 @@ func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
 			Name:      event.Data.Name,
 			Available: event.Data.Available,
 			Version:   event.Data.Version,
+			Price:     event.Data.Price,
 		}
 
 		// Parse the timestamp

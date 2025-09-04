@@ -77,6 +77,7 @@ func (h *InventoryHandler) GetAllProducts(w http.ResponseWriter, r *http.Request
 			"available":   product.Available,
 			"version":     product.Version,
 			"lastUpdated": product.LastUpdated.Format("2006-01-02T15:04:05Z07:00"),
+			"price":       product.Price,
 		}
 		productResponses = append(productResponses, productResponse)
 	}
@@ -150,6 +151,7 @@ func (h *InventoryHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 		"available":   product.Available,
 		"version":     product.Version,
 		"lastUpdated": product.LastUpdated.Format("2006-01-02T15:04:05Z07:00"),
+		"price":       product.Price,
 	}
 
 	slog.Info("Successfully retrieved product from local cache",

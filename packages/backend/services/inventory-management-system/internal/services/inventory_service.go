@@ -61,11 +61,12 @@ type InventoryData struct {
 
 // ProductData represents complete product data
 type ProductData struct {
-	ProductID   string `json:"productId"`
-	Name        string `json:"name"`
-	Available   int    `json:"available"`
-	Version     int    `json:"version"`
-	LastUpdated string `json:"lastUpdated"`
+	ProductID   string  `json:"productId"`
+	Name        string  `json:"name"`
+	Available   int     `json:"available"`
+	Version     int     `json:"version"`
+	LastUpdated string  `json:"lastUpdated"`
+	Price       float64 `json:"price"`
 }
 
 // MetadataData represents system metadata for replication and caching
@@ -209,6 +210,7 @@ func (s *InventoryService) GetProduct(productID string) (*models.ProductResponse
 			Available:   productData.Available,
 			Version:     productData.Version,
 			LastUpdated: productData.LastUpdated,
+			Price:       productData.Price,
 		}
 
 		slog.Debug("Product retrieved successfully",
@@ -238,6 +240,7 @@ func (s *InventoryService) ListProducts(cursor string, limit int) (*models.ListR
 			Available:   productData.Available,
 			Version:     productData.Version,
 			LastUpdated: productData.LastUpdated,
+			Price:       productData.Price,
 		}
 		items = append(items, item)
 
@@ -547,9 +550,11 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 		go func() {
 			// Get the complete product data to include in the event
 			var productName string
+			var productPrice float64
 			s.productLockManager.WithProductReadLock(req.ProductID, func() {
 				if productData, exists := s.data.Products[req.ProductID]; exists {
 					productName = productData.Name
+					productPrice = productData.Price
 				}
 			})
 
@@ -560,6 +565,7 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 				Available:   result.NewQuantity,
 				Version:     result.NewVersion,
 				LastUpdated: result.LastUpdated,
+				Price:       productPrice,
 			}
 
 			s.eventQueue.PublishEvent(
