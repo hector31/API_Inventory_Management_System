@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Store S1 Inventory Management Frontend" />
-    <title>Store S1 - Inventory Management</title>
+    <meta name="description" content="Store Inventory Management Frontend" />
+    <title>Store - Inventory Management</title>
     <style>
       * {
         margin: 0;
@@ -590,7 +590,7 @@
   <body>
     <div class="container">
       <div class="header">
-        <h1>🏪 Store S1 Inventory</h1>
+        <h1 id="store-title">🏪 Store Inventory</h1>
         <p>Frontend Application - Testing Mode</p>
       </div>
 
@@ -601,7 +601,7 @@
           <span id="frontend-status">✅ Running</span>
         </div>
         <div class="status-item">
-          <span>Store S1 API:</span>
+          <span id="store-api-label">Store API:</span>
           <span id="api-status">🔄 Checking...</span>
         </div>
         <div class="status-item">
@@ -611,7 +611,7 @@
       </div>
 
       <div style="text-align: center;">
-        <button class="btn" onclick="testAPI()">🔄 Test Store S1 API</button>
+        <button class="btn" onclick="testAPI()" id="test-api-btn">🔄 Test Store API</button>
         <button class="btn" onclick="loadProducts(false)">📦 Refresh Products</button>
         <button class="btn" onclick="testHealth()">❤️ Health Check</button>
         <button class="btn" onclick="currentPage=1; loadProducts(false)">🏠 Reset to Page 1</button>
@@ -699,6 +699,11 @@
     </div>
 
     <script>
+      // Environment variables (injected at build time)
+      const STORE_NAME = 'Store S1';
+      const STORE_ID = 'store-s1';
+      const API_KEY = 'demo';
+
       // Global state
       let currentPage = 1;
       let totalProducts = 0;
@@ -714,11 +719,31 @@
       // Shopping Cart Functions
 
       function addToCart(productId, productName, price, available, version) {
+        // Validate input parameters
+        if (!productId || !productName) {
+          console.error('Invalid product data:', { productId, productName, price, available, version });
+          showMessage(`Invalid product data`, 'error');
+          return;
+        }
+
         // Validate that price is a valid number
         if (typeof price !== 'number' || isNaN(price) || price <= 0) {
+          console.error('Invalid price for product:', productName, price);
           showMessage(`Invalid price for ${productName}`, 'error');
           return;
         }
+
+        // Validate available quantity
+        if (typeof available !== 'number' || isNaN(available) || available < 0) {
+          console.error('Invalid available quantity for product:', productName, available);
+          showMessage(`Invalid stock data for ${productName}`, 'error');
+          return;
+        }
+
+        // Ensure version is a valid number (default to 1 if not provided)
+        const validVersion = (typeof version === 'number' && !isNaN(version)) ? version : 1;
+
+        console.log('Adding to cart:', { productId, productName, price, available, version: validVersion });
 
         // Check if product is already in cart
         const existingItem = cart.find(item => item.productId === productId);
@@ -740,7 +765,7 @@
             price,
             quantity: 1,
             available,
-            version
+            version: validVersion
           });
           showMessage(`${productName} added to cart`, 'success');
         }
@@ -981,7 +1006,7 @@
 
             // Create purchase request (negative delta to reduce inventory)
             const purchaseRequest = {
-              storeId: 'store-s1',
+              storeId: STORE_ID,
               productId: item.productId,
               delta: -item.quantity, // Negative to reduce inventory
               version: currentVersion,
@@ -990,12 +1015,12 @@
 
             console.log(`Purchase attempt ${attempt} for ${item.productName}:`, purchaseRequest);
 
-            // Send purchase request to Store S1 API
+            // Send purchase request to Store API
             const response = await fetch('/api/inventory/updates', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'X-API-Key': 'store-s1-key'
+                'X-API-Key': API_KEY
               },
               body: JSON.stringify(purchaseRequest)
             });
@@ -1100,7 +1125,7 @@
         try {
           const response = await fetch(`/api/inventory/${productId}`, {
             headers: {
-              'X-API-Key': 'store-s1-key'
+              'X-API-Key': API_KEY
             }
           });
 
@@ -1164,7 +1189,7 @@
         try {
           const response = await fetch('/api/inventory', {
             headers: {
-              'X-API-Key': 'demo'
+              'X-API-Key': API_KEY
             }
           });
 
@@ -1201,7 +1226,7 @@
           const url = `/api/inventory?offset=${(currentPage - 1) * productsPerPage}&limit=${productsPerPage}`;
           const response = await fetch(url, {
             headers: {
-              'X-API-Key': 'demo'
+              'X-API-Key': API_KEY
             }
           });
 
@@ -1347,8 +1372,11 @@
           const productName = product.name || product.Name || 'Unknown Product';
           const productId = product.productId || product.product_id || product.ProductID || 'Unknown ID';
 
-          // Handle version field
-          const version = product.version || product.Version || 'N/A';
+          // Handle version field - ensure it's a number
+          let version = product.version || product.Version || 1;
+          if (typeof version !== 'number' || isNaN(version)) {
+            version = 1; // Default to version 1 if invalid
+          }
 
           // Handle available field
           const available = product.available !== undefined ? product.available :
@@ -1362,6 +1390,11 @@
             console.warn(`Invalid price for product ${productId}:`, price);
           }
 
+          // Debug log for the fifth product (index 4)
+          if (currentProducts.indexOf(product) === 4) {
+            console.log('Fifth product data:', { productId, productName, price, available, version });
+          }
+
           html += `
             <div class="product-card">
               <div class="product-header">
@@ -1369,8 +1402,14 @@
               </div>
               <p><strong>Available:</strong> <span style="color: ${stockColor};">${available} ${stockStatus}</span></p>
               <p><strong>Price:</strong> $${price.toFixed(2)}</p>
-              <button class="btn add-to-cart-btn" onclick="addToCart('${productId}', '${productName.replace(/'/g, "\\'")}', ${price}, ${available}, ${version})"
-                      ${available <= 0 || price <= 0 ? 'disabled' : ''}>
+              <button class="btn add-to-cart-btn"
+                      onclick="addToCart('${productId}', '${productName.replace(/'/g, "\\'")}', ${price}, ${available}, ${version})"
+                      ${available <= 0 || price <= 0 ? 'disabled' : ''}
+                      data-product-id="${productId}"
+                      data-product-name="${productName}"
+                      data-price="${price}"
+                      data-available="${available}"
+                      data-version="${version}">
                 🛒 Add to Cart
               </button>
             </div>
@@ -1489,8 +1528,60 @@
 
       // Auto-refresh toggle functionality removed
 
+      // Initialize dynamic content based on environment variables
+      function initializeDynamicContent() {
+        // Update page title
+        document.title = `${STORE_NAME} - Inventory Management`;
+
+        // Update store title in header
+        const storeTitle = document.getElementById('store-title');
+        if (storeTitle) {
+          storeTitle.textContent = `🏪 ${STORE_NAME} Inventory`;
+        }
+
+        // Update store API label
+        const storeApiLabel = document.getElementById('store-api-label');
+        if (storeApiLabel) {
+          storeApiLabel.textContent = `${STORE_NAME} API:`;
+        }
+
+        // Update test API button
+        const testApiBtn = document.getElementById('test-api-btn');
+        if (testApiBtn) {
+          testApiBtn.textContent = `🔄 Test ${STORE_NAME} API`;
+        }
+
+        // Update meta description
+        const metaDescription = document.querySelector('meta[name="description"]');
+        if (metaDescription) {
+          metaDescription.setAttribute('content', `${STORE_NAME} Inventory Management Frontend`);
+        }
+      }
+
       // Initialize application
       function initializeApp() {
+        // Initialize dynamic content first
+        initializeDynamicContent();
+
+        // Add global error handler for debugging
+        window.addEventListener('error', function(e) {
+          console.error('Global error:', e.error, e.message, e.filename, e.lineno);
+        });
+
+        // Add click event listener for debugging add-to-cart buttons
+        document.addEventListener('click', function(e) {
+          if (e.target.classList.contains('add-to-cart-btn')) {
+            console.log('Add to cart button clicked:', {
+              productId: e.target.dataset.productId,
+              productName: e.target.dataset.productName,
+              price: e.target.dataset.price,
+              available: e.target.dataset.available,
+              version: e.target.dataset.version,
+              onclick: e.target.getAttribute('onclick')
+            });
+          }
+        });
+
         updateTime();
         setInterval(updateTime, 1000);
 

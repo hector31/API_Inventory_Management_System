@@ -1,21 +1,56 @@
-# Simple static frontend with nginx
+# 🚀 Ultra-Optimized Dockerfile for Static Frontend
+# ✅ No npm install needed - Build in seconds, not minutes!
+# ✅ Full environment variable support
+# ✅ Multi-stage build for minimal image size
+
+# Stage 1: Process static files with environment variables
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# 📋 Build arguments for environment variables
+ARG REACT_APP_API_BASE_URL=/api
+ARG REACT_APP_STORE_API_URL=http://store-s1:8083
+ARG REACT_APP_API_KEY=demo
+ARG REACT_APP_STORE_ID=store-s1
+ARG REACT_APP_STORE_NAME=Store S1
+ARG REACT_APP_AUTO_REFRESH_INTERVAL=30000
+ARG REACT_APP_REQUEST_TIMEOUT=10000
+
+# 🔧 Set environment variables for build script
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+ENV REACT_APP_STORE_API_URL=$REACT_APP_STORE_API_URL
+ENV REACT_APP_API_KEY=$REACT_APP_API_KEY
+ENV REACT_APP_STORE_ID=$REACT_APP_STORE_ID
+ENV REACT_APP_STORE_NAME=$REACT_APP_STORE_NAME
+ENV REACT_APP_AUTO_REFRESH_INTERVAL=$REACT_APP_AUTO_REFRESH_INTERVAL
+ENV REACT_APP_REQUEST_TIMEOUT=$REACT_APP_REQUEST_TIMEOUT
+
+# 📁 Copy only essential files (NO package.json = NO npm install!)
+COPY build-static.js ./
+COPY public/ ./public/
+
+# ⚡ Process static files with environment variables (ultra-fast!)
+RUN node build-static.js
+
+# Stage 2: Production nginx server
 FROM nginx:alpine
 
-# Copy static files directly
-COPY public/ /usr/share/nginx/html/
+# 📦 Copy processed static files
+COPY --from=builder /app/build /usr/share/nginx/html
 
-# Copy custom nginx configuration
+# 🔧 Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Install curl for health checks
+# 🏥 Install curl for health checks
 RUN apk add --no-cache curl
 
-# Expose port 80
+# 🌐 Expose port
 EXPOSE 80
 
-# Health check
+# ❤️ Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost/ || exit 1
 
-# Start nginx
+# 🚀 Start nginx
 CMD ["nginx", "-g", "daemon off;"]
