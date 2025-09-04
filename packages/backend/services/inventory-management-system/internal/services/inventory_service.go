@@ -545,8 +545,18 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 	// Do this asynchronously to prevent blocking the response
 	if result.Success && s.eventQueue != nil {
 		go func() {
+			// Get the complete product data to include in the event
+			var productName string
+			s.productLockManager.WithProductReadLock(req.ProductID, func() {
+				if productData, exists := s.data.Products[req.ProductID]; exists {
+					productName = productData.Name
+				}
+			})
+
+			// Create event data with complete product information
 			eventData := models.ProductResponse{
 				ProductID:   req.ProductID,
+				Name:        productName,
 				Available:   result.NewQuantity,
 				Version:     result.NewVersion,
 				LastUpdated: result.LastUpdated,
@@ -568,8 +578,10 @@ func (s *InventoryService) processUpdateInternal(req *UpdateRequest) *UpdateResu
 
 			slog.Debug("Event published for inventory update",
 				"product_id", req.ProductID,
+				"product_name", productName,
 				"event_type", models.EventTypeProductUpdated,
 				"new_version", result.NewVersion,
+				"new_quantity", result.NewQuantity,
 				"current_offset", currentOffset)
 		}()
 	}
