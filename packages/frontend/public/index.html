@@ -719,23 +719,25 @@
       // Shopping Cart Functions
 
       function addToCart(productId, productName, price, available, version) {
+        console.log('🛒 addToCart called with:', { productId, productName, price, available, version });
+
         // Validate input parameters
         if (!productId || !productName) {
-          console.error('Invalid product data:', { productId, productName, price, available, version });
+          console.error('❌ Invalid product data:', { productId, productName, price, available, version });
           showMessage(`Invalid product data`, 'error');
           return;
         }
 
         // Validate that price is a valid number
         if (typeof price !== 'number' || isNaN(price) || price <= 0) {
-          console.error('Invalid price for product:', productName, price);
+          console.error('❌ Invalid price for product:', productName, price);
           showMessage(`Invalid price for ${productName}`, 'error');
           return;
         }
 
         // Validate available quantity
         if (typeof available !== 'number' || isNaN(available) || available < 0) {
-          console.error('Invalid available quantity for product:', productName, available);
+          console.error('❌ Invalid available quantity for product:', productName, available);
           showMessage(`Invalid stock data for ${productName}`, 'error');
           return;
         }
@@ -743,7 +745,7 @@
         // Ensure version is a valid number (default to 1 if not provided)
         const validVersion = (typeof version === 'number' && !isNaN(version)) ? version : 1;
 
-        console.log('Adding to cart:', { productId, productName, price, available, version: validVersion });
+        console.log('✅ Validated data, adding to cart:', { productId, productName, price, available, version: validVersion });
 
         // Check if product is already in cart
         const existingItem = cart.find(item => item.productId === productId);
@@ -1391,8 +1393,17 @@
           }
 
           // Debug log for the fifth product (index 4)
-          if (currentProducts.indexOf(product) === 4) {
-            console.log('Fifth product data:', { productId, productName, price, available, version });
+          const productIndex = currentProducts.indexOf(product);
+          if (productIndex === 4) {
+            console.log('🔍 Fifth product data (index 4):', {
+              productIndex,
+              productId,
+              productName,
+              price,
+              available,
+              version,
+              rawProduct: product
+            });
           }
 
           html += `
@@ -1403,7 +1414,6 @@
               <p><strong>Available:</strong> <span style="color: ${stockColor};">${available} ${stockStatus}</span></p>
               <p><strong>Price:</strong> $${price.toFixed(2)}</p>
               <button class="btn add-to-cart-btn"
-                      onclick="addToCart('${productId}', '${productName.replace(/'/g, "\\'")}', ${price}, ${available}, ${version})"
                       ${available <= 0 || price <= 0 ? 'disabled' : ''}
                       data-product-id="${productId}"
                       data-product-name="${productName}"
@@ -1419,11 +1429,86 @@
         html += '</div>';
         contentEl.innerHTML = html;
 
+        // Add event listeners to add-to-cart buttons
+        attachAddToCartListeners();
+
         // Show pagination controls
         const paginationEl = document.getElementById('pagination-controls');
         if (paginationEl) {
           paginationEl.style.display = 'flex';
         }
+      }
+
+      // Function to attach event listeners to add-to-cart buttons
+      function attachAddToCartListeners() {
+        const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
+        console.log(`🔧 Attaching event listeners to ${addToCartButtons.length} buttons`);
+
+        addToCartButtons.forEach((button, index) => {
+          // Skip if already has event listener
+          if (button._hasEventListener) {
+            console.log(`⏭️ Button ${index + 1} already has event listener`);
+            return;
+          }
+
+          // Mark as having event listener
+          button._hasEventListener = true;
+
+          button.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            console.log(`🖱️ Button ${index + 1} clicked`);
+
+            // Get data from button attributes
+            const productId = this.getAttribute('data-product-id');
+            const productName = this.getAttribute('data-product-name');
+            const price = parseFloat(this.getAttribute('data-price'));
+            const available = parseInt(this.getAttribute('data-available'));
+            const version = parseInt(this.getAttribute('data-version')) || 1;
+
+            // Debug log for fifth product (index 4)
+            if (index === 4) {
+              console.log('🎯 Fifth product button clicked:', {
+                index,
+                productId,
+                productName,
+                price,
+                available,
+                version,
+                buttonElement: this,
+                disabled: this.disabled
+              });
+            }
+
+            // Check if button is disabled
+            if (this.disabled) {
+              console.log('❌ Button is disabled, not adding to cart');
+              return;
+            }
+
+            // Validate data before calling addToCart
+            if (!productId || !productName || isNaN(price) || isNaN(available)) {
+              console.error('❌ Invalid product data from button:', {
+                productId,
+                productName,
+                price,
+                available,
+                version
+              });
+              showMessage('Error: Invalid product data', 'error');
+              return;
+            }
+
+            console.log(`✅ Calling addToCart for button ${index + 1}`);
+            // Call addToCart function
+            addToCart(productId, productName, price, available, version);
+          });
+
+          console.log(`✅ Event listener attached to button ${index + 1} (${button.dataset.productName})`);
+        });
+
+        console.log(`🎉 Completed attaching event listeners to ${addToCartButtons.length} buttons`);
       }
 
       // Get stock status text
@@ -1568,19 +1653,45 @@
           console.error('Global error:', e.error, e.message, e.filename, e.lineno);
         });
 
-        // Add click event listener for debugging add-to-cart buttons
+        // Add global click event listener for debugging
         document.addEventListener('click', function(e) {
           if (e.target.classList.contains('add-to-cart-btn')) {
-            console.log('Add to cart button clicked:', {
+            console.log('🖱️ Global click detected on add-to-cart button:', {
               productId: e.target.dataset.productId,
               productName: e.target.dataset.productName,
               price: e.target.dataset.price,
               available: e.target.dataset.available,
               version: e.target.dataset.version,
-              onclick: e.target.getAttribute('onclick')
+              disabled: e.target.disabled,
+              classList: Array.from(e.target.classList)
             });
           }
         });
+
+        // Add specific debugging for fifth product
+        window.debugFifthProduct = function() {
+          const buttons = document.querySelectorAll('.add-to-cart-btn');
+          console.log('🔍 All add-to-cart buttons:', buttons.length);
+
+          buttons.forEach((button, index) => {
+            console.log(`Button ${index + 1}:`, {
+              index,
+              productId: button.dataset.productId,
+              productName: button.dataset.productName,
+              disabled: button.disabled,
+              hasEventListener: button._hasEventListener || false
+            });
+
+            if (index === 4) { // Fifth product (index 4)
+              console.log('🎯 Fifth product button details:', {
+                element: button,
+                outerHTML: button.outerHTML,
+                allDataAttributes: Object.keys(button.dataset),
+                computedStyle: window.getComputedStyle(button).display
+              });
+            }
+          });
+        };
 
         updateTime();
         setInterval(updateTime, 1000);
