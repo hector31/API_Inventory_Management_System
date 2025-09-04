@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Inventory Management API
 # Stage 1: Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install git and ca-certificates (needed for fetching dependencies)
 RUN apk add --no-cache git ca-certificates tzdata
@@ -60,8 +60,9 @@ ENV DATA_PATH=./data/inventory_test_data.json
 ENV CACHE_TTL_MINUTES=30
 ENV CACHE_CLEANUP_INTERVAL_MINUTES=10
 
-# Expose port
+# Expose ports
 EXPOSE 8081
+EXPOSE 9080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
