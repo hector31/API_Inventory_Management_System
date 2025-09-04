@@ -1,0 +1,116 @@
+# OpenTelemetry Collector Configuration for Inventory Management API
+
+receivers:
+  # OTLP receiver for gRPC and HTTP
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Prometheus receiver to scrape metrics from services
+  prometheus:
+    config:
+      scrape_configs:
+        # Scrape metrics from Inventory Management API (scraper mode)
+        - job_name: 'inventory-api-metrics'
+          static_configs:
+            - targets: ['inventory-management-system:9080']
+          metrics_path: '/metrics'
+          scrape_interval: 15s
+          scrape_timeout: 10s
+
+        # Scrape metrics from Store S1 API if it has metrics
+        - job_name: 'store-s1-metrics'
+          static_configs:
+            - targets: ['store-s1:9080']
+          metrics_path: '/metrics'
+          scrape_interval: 15s
+          scrape_timeout: 10s
+
+processors:
+  # Batch processor for better performance
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    limit_mib: 256
+
+  # Resource processor to add additional attributes
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: development
+        action: upsert
+      - key: service.namespace
+        value: meli-inventory
+        action: upsert
+
+  # Attributes processor to modify metric attributes
+  attributes:
+    actions:
+      # Add consistent labels
+      - key: cluster
+        value: local-docker
+        action: upsert
+
+exporters:
+  # Prometheus exporter for metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: inventory
+    const_labels:
+      environment: development
+      cluster: local-docker
+
+  # Prometheus remote write (alternative)
+  prometheusremotewrite:
+    endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
+
+  # Logging exporter for debugging
+  logging:
+    loglevel: info
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+  # Debug exporter for troubleshooting
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    # Metrics pipeline
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, resource, attributes, batch]
+      exporters: [prometheus, logging]
+
+  # Extensions for health checks and monitoring
+  extensions: [health_check, pprof, zpages]
+
+extensions:
+  # Health check extension
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # Performance profiling
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+  # zPages for debugging
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+# Telemetry configuration for the collector itself
+telemetry:
+  logs:
+    level: info
+  metrics:
+    address: 0.0.0.0:8888
+    level: basic

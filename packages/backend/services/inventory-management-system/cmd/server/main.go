@@ -15,6 +15,7 @@ import (
 	"inventory-management-api/internal/handlers"
 	"inventory-management-api/internal/middleware"
 	"inventory-management-api/internal/services"
+	"inventory-management-api/internal/telemetry"
 
 	"github.com/gorilla/mux"
 )
@@ -24,6 +25,20 @@ func main() {
 	cfg := config.LoadConfig()
 
 	slog.Info("Starting Inventory Management API", "version", "1.0.0")
+
+	// Initialize OpenTelemetry telemetry system
+	ctx := context.Background()
+	otelTelemetry := &telemetry.Telemetry{}
+	otelTelemetry.InitMetrics("inventory-management-api", &ctx)
+	slog.Info("OpenTelemetry telemetry initialized")
+
+	// Initialize Inventory API telemetry
+	apiTelemetry := telemetry.NewInventoryApiTelemetry()
+	if err := apiTelemetry.InitializeTelemetry(ctx); err != nil {
+		slog.Error("Failed to initialize API telemetry", "error", err)
+		return
+	}
+	slog.Info("Inventory API telemetry initialized successfully")
 
 	r := mux.NewRouter()
 
@@ -60,6 +75,12 @@ func main() {
 	eventsHandler := handlers.NewEventsHandler(eventQueue, slog.Default())
 	healthHandler := handlers.NewHealthHandler()
 	slog.Debug("HTTP handlers initialized")
+
+	// Create telemetry middleware
+	telemetryMiddleware := telemetry.NewTelemetryMiddleware(apiTelemetry)
+
+	// Apply telemetry middleware to all routes first
+	r.Use(telemetryMiddleware.Middleware)
 
 	// Apply auth middleware to v1 API routes
 	v1 := r.PathPrefix("/v1").Subrouter()
@@ -127,6 +148,10 @@ func main() {
 	if err := eventQueue.Close(); err != nil {
 		slog.Error("Error closing event queue", "error", err)
 	}
+
+	// Shutdown telemetry
+	otelTelemetry.Close()
+	slog.Info("Telemetry shutdown completed")
 
 	// Shutdown HTTP server
 	if err := server.Shutdown(ctx); err != nil {

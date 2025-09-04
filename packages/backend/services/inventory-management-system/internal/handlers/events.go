@@ -9,6 +9,7 @@ import (
 
 	"inventory-management-api/internal/events"
 	"inventory-management-api/internal/models"
+	"inventory-management-api/internal/telemetry"
 )
 
 // EventsHandler handles event streaming requests
@@ -27,6 +28,8 @@ func NewEventsHandler(eventQueue *events.EventQueue, logger *slog.Logger) *Event
 
 // GetEvents handles GET /v1/inventory/events
 func (h *EventsHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	// Parse query parameters
 	offsetStr := r.URL.Query().Get("offset")
 	if offsetStr == "" {
@@ -92,6 +95,9 @@ func (h *EventsHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// Set telemetry context data for the middleware to pick up
+	ctx = telemetry.SetEventCount(ctx, len(events))
 
 	// Prepare response
 	response := models.EventsResponse{

@@ -1,0 +1,90 @@
+# Docker Compose override for telemetry development
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.telemetry.yml up
+
+version: '3.8'
+
+services:
+  # Enhanced Inventory Management System with telemetry
+  inventory-management-system:
+    environment:
+      # Enhanced telemetry configuration
+      - METRICS_EXPORTER=scraper
+      - OTEL_SERVICE_NAME=inventory-management-api
+      - OTEL_SERVICE_VERSION=1.0.0
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=inventory-management-api,service.version=1.0.0,environment=development,deployment.environment=development
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_METRICS_EXPORTER=prometheus
+      - OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0
+      - OTEL_EXPORTER_PROMETHEUS_PORT=9080
+      - OTEL_LOG_LEVEL=debug
+    ports:
+      - "9080:9080"  # Prometheus metrics endpoint
+    depends_on:
+      - otel-collector
+
+  # Store S1 with potential telemetry
+  store-s1:
+    environment:
+      # Add telemetry configuration if Store S1 supports it
+      - METRICS_EXPORTER=scraper
+      - OTEL_SERVICE_NAME=store-s1-api
+    ports:
+      - "9081:9080"  # Metrics endpoint if available
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.88.0
+    container_name: otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics (collector internal)
+      - "8889:8889"   # Prometheus exporter metrics
+      - "13133:13133" # Health check
+      - "1777:1777"   # pprof
+      - "55679:55679" # zpages
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./packages/backend/services/inventory-management-system/monitoring/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    networks:
+      - meli_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Enhanced Prometheus configuration
+  prometheus:
+    volumes:
+      - ./packages/backend/services/inventory-management-system/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - otel-collector
+      - inventory-management-system
+
+  # Enhanced Grafana with provisioning
+  grafana:
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_HTTP_PORT=3000
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./packages/backend/services/inventory-management-system/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./packages/backend/services/inventory-management-system/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+networks:
+  meli_network:
+    driver: bridge
+
+volumes:
+  grafana_data:
+  prometheus_data:
