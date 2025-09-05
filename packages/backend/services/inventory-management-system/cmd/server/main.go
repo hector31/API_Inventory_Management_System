@@ -74,6 +74,7 @@ func main() {
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	eventsHandler := handlers.NewEventsHandler(eventQueue, slog.Default())
 	healthHandler := handlers.NewHealthHandler()
+	adminHandler := handlers.NewAdminHandler(inventoryService)
 	slog.Debug("HTTP handlers initialized")
 
 	// Create telemetry middleware
@@ -91,6 +92,11 @@ func main() {
 	v1.HandleFunc("/inventory/events", eventsHandler.GetEvents).Methods("GET")
 	v1.HandleFunc("/inventory/{productId}", inventoryHandler.GetProduct).Methods("GET")
 	v1.HandleFunc("/inventory", inventoryHandler.ListProducts).Methods("GET")
+
+	// Admin API routes (v1) - require admin authentication
+	adminV1 := r.PathPrefix("/v1/admin").Subrouter()
+	adminV1.Use(middleware.AdminAuthMiddleware)
+	adminV1.HandleFunc("/products/set", adminHandler.SetProducts).Methods("POST")
 
 	// Health check endpoint (no auth required)
 	r.HandleFunc("/health", healthHandler.Health).Methods("GET")

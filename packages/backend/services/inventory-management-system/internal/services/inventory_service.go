@@ -88,6 +88,8 @@ const (
 	ErrTypeUnknown               = "unknown_error"
 	ErrTypeInvalidIdempotencyKey = "invalid_idempotency_key"
 	ErrTypeMissingProductID      = "missing_product_id"
+	ErrTypeNotFound              = "not_found"
+	ErrTypeValidation            = "validation_error"
 )
 
 // NewInventoryService creates a new inventory service instance
@@ -770,4 +772,154 @@ func (s *InventoryService) UpdateInventory(productID string, delta, version int,
 			"timeout", "20s")
 		return nil, fmt.Errorf("timeout waiting for update result after 20 seconds")
 	}
+}
+
+// AdminSetProducts performs admin-level product updates with OCC
+func (s *InventoryService) AdminSetProducts(products []models.AdminProductUpdate) (*models.AdminSetResponse, error) {
+	slog.Info("Processing admin set request", "product_count", len(products))
+
+	results := make([]models.AdminProductResult, 0, len(products))
+	successCount := 0
+	failureCount := 0
+
+	for _, productUpdate := range products {
+		result := s.processAdminProductUpdate(productUpdate)
+		results = append(results, result)
+
+		if result.Success {
+			successCount++
+		} else {
+			failureCount++
+		}
+	}
+
+	response := &models.AdminSetResponse{
+		Results: results,
+		Summary: models.AdminSetSummary{
+			TotalRequests:     len(products),
+			SuccessfulUpdates: successCount,
+			FailedUpdates:     failureCount,
+		},
+	}
+
+	slog.Info("Admin set request completed",
+		"total", len(products),
+		"successful", successCount,
+		"failed", failureCount)
+
+	return response, nil
+}
+
+// processAdminProductUpdate handles a single admin product update with OCC
+func (s *InventoryService) processAdminProductUpdate(update models.AdminProductUpdate) models.AdminProductResult {
+	slog.Debug("Processing admin product update", "product_id", update.ProductID)
+
+	// Use product-level locking for OCC
+	var result models.AdminProductResult
+	var productData ProductData
+	var exists bool
+
+	s.productLockManager.WithProductWriteLock(update.ProductID, func() {
+		// Check if product exists
+		productData, exists = s.data.Products[update.ProductID]
+		if !exists {
+			result = models.AdminProductResult{
+				ProductID:    update.ProductID,
+				Success:      false,
+				ErrorType:    ErrTypeNotFound,
+				ErrorMessage: "Product not found",
+			}
+			return
+		}
+
+		// Create updated product data
+		updatedProduct := productData // Copy existing data
+		hasChanges := false
+
+		// Apply partial updates
+		if update.Name != nil {
+			updatedProduct.Name = *update.Name
+			hasChanges = true
+		}
+		if update.Available != nil {
+			updatedProduct.Available = *update.Available
+			hasChanges = true
+		}
+		if update.Price != nil {
+			updatedProduct.Price = *update.Price
+			hasChanges = true
+		}
+
+		if !hasChanges {
+			result = models.AdminProductResult{
+				ProductID:    update.ProductID,
+				Success:      false,
+				ErrorType:    ErrTypeValidation,
+				ErrorMessage: "No fields to update",
+			}
+			return
+		}
+
+		// Update version and timestamp (OCC)
+		updatedProduct.Version++
+		updatedProduct.LastUpdated = time.Now().Format(time.RFC3339)
+
+		// Apply the update
+		s.data.Products[update.ProductID] = updatedProduct
+
+		result = models.AdminProductResult{
+			ProductID:   update.ProductID,
+			Success:     true,
+			NewVersion:  updatedProduct.Version,
+			LastUpdated: updatedProduct.LastUpdated,
+		}
+
+		slog.Debug("Admin product update successful",
+			"product_id", update.ProductID,
+			"new_version", updatedProduct.Version,
+			"name_updated", update.Name != nil,
+			"available_updated", update.Available != nil,
+			"price_updated", update.Price != nil)
+	})
+
+	// Publish event if update was successful
+	if result.Success && s.eventQueue != nil {
+		go func() {
+			// Get the complete updated product data
+			s.productLockManager.WithProductReadLock(update.ProductID, func() {
+				if updatedProductData, exists := s.data.Products[update.ProductID]; exists {
+					eventData := models.ProductResponse{
+						ProductID:   update.ProductID,
+						Name:        updatedProductData.Name,
+						Available:   updatedProductData.Available,
+						Version:     updatedProductData.Version,
+						LastUpdated: updatedProductData.LastUpdated,
+						Price:       updatedProductData.Price,
+					}
+
+					s.eventQueue.PublishEvent(
+						models.EventTypeProductUpdated,
+						update.ProductID,
+						eventData,
+						updatedProductData.Version,
+					)
+
+					// Update metadata with current event offset
+					s.globalMutex.Lock()
+					currentOffset := s.eventQueue.GetCurrentOffset()
+					s.data.Metadata.LastOffset = int(currentOffset)
+					s.data.Metadata.LastUpdated = updatedProductData.LastUpdated
+					s.globalMutex.Unlock()
+
+					slog.Debug("Event published for admin product update",
+						"product_id", update.ProductID,
+						"event_type", models.EventTypeProductUpdated,
+						"new_version", updatedProductData.Version,
+						"current_offset", currentOffset)
+				}
+			})
+		}()
+	}
+
+	return result
 }

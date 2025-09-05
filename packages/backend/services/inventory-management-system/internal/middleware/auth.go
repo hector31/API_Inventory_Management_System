@@ -49,6 +49,49 @@ func isValidAPIKey(apiKey string) bool {
 	return false
 }
 
+// AdminAuthMiddleware provides admin-only API key authentication
+func AdminAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			slog.Warn("Admin authentication failed: missing API key", "remote_addr", r.RemoteAddr)
+			writeErrorResponse(w, http.StatusUnauthorized, "unauthorized", "Admin API key required", nil)
+			return
+		}
+
+		// Validate API key against admin keys
+		if !isValidAdminAPIKey(apiKey) {
+			slog.Warn("Admin authentication failed: invalid admin API key", "remote_addr", r.RemoteAddr, "provided_key", apiKey)
+			writeErrorResponse(w, http.StatusForbidden, "forbidden", "Admin access required", nil)
+			return
+		}
+
+		slog.Debug("Admin authentication successful", "remote_addr", r.RemoteAddr, "api_key", apiKey)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isValidAdminAPIKey checks if the provided API key has admin privileges
+func isValidAdminAPIKey(apiKey string) bool {
+	// Get admin API keys from environment variable
+	adminKeysStr := os.Getenv("ADMIN_API_KEYS")
+	if adminKeysStr == "" {
+		// Fallback: check if it's in the regular API keys and has admin prefix
+		if strings.HasPrefix(apiKey, "admin-") {
+			return isValidAPIKey(apiKey)
+		}
+		return false
+	}
+
+	validAdminKeys := strings.Split(adminKeysStr, ",")
+	for _, validKey := range validAdminKeys {
+		if strings.TrimSpace(validKey) == apiKey {
+			return true
+		}
+	}
+	return false
+}
+
 // writeErrorResponse is a helper function to write error responses
 func writeErrorResponse(w http.ResponseWriter, statusCode int, code, message string, details []models.ErrorDetail) {
 	w.Header().Set("Content-Type", "application/json")
