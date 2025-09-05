@@ -44,9 +44,6 @@ COPY --from=builder /app/inventory-api .
 # Copy data files
 COPY --chown=appuser:appgroup data/ ./data/
 
-# Copy docs (optional, for API documentation)
-COPY --chown=appuser:appgroup docs/ ./docs/
-
 # Switch to non-root user
 USER appuser
 

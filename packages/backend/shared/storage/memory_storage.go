@@ -52,11 +52,24 @@ func (ms *MemoryStorage) Initialize() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
+	slog.Debug("Initializing memory storage",
+		"data_file", ms.dataFile,
+		"meta_file", ms.metaFile)
+
 	// Try to load existing data
 	if err := ms.loadFromFile(); err != nil {
 		// If loading fails, start with empty storage
 		ms.products = make(map[string]models.Product)
 		ms.lastSyncTime = time.Time{}
+		slog.Info("🆕 Created new empty database - no existing data found",
+			"error", err.Error(),
+			"data_file", ms.dataFile)
+	} else {
+		slog.Info("📂 Loaded existing database from local files",
+			"product_count", len(ms.products),
+			"last_sync_time", ms.lastSyncTime.Format(time.RFC3339),
+			"last_event_offset", ms.lastEventOffset,
+			"data_file", ms.dataFile)
 	}
 
 	return nil
@@ -75,6 +88,12 @@ func (ms *MemoryStorage) SyncAllProducts(products []models.Product) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
+	oldProductCount := len(ms.products)
+
+	slog.Info("🔄 Starting full database synchronization",
+		"old_product_count", oldProductCount,
+		"new_product_count", len(products))
+
 	// Clear existing products
 	ms.products = make(map[string]models.Product)
 
@@ -84,6 +103,11 @@ func (ms *MemoryStorage) SyncAllProducts(products []models.Product) error {
 	}
 
 	ms.lastSyncTime = time.Now()
+
+	slog.Info("✅ Full database synchronization completed",
+		"products_replaced", oldProductCount,
+		"products_loaded", len(ms.products),
+		"sync_time", ms.lastSyncTime.Format(time.RFC3339))
 
 	// Persist to file
 	return ms.saveToFile()
@@ -344,11 +368,27 @@ func (ms *MemoryStorage) GetStorageStats() (*StorageStats, error) {
 
 // loadFromFile loads products and metadata from files
 func (ms *MemoryStorage) loadFromFile() error {
+	var productsLoaded, metadataLoaded bool
+	var productCount int
+
 	// Load products
 	if data, err := os.ReadFile(ms.dataFile); err == nil {
 		if err := json.Unmarshal(data, &ms.products); err != nil {
+			slog.Error("❌ Failed to parse products file",
+				"file", ms.dataFile,
+				"error", err.Error())
 			return fmt.Errorf("failed to unmarshal products: %w", err)
 		}
+		productsLoaded = true
+		productCount = len(ms.products)
+		slog.Debug("✅ Products file loaded successfully",
+			"file", ms.dataFile,
+			"product_count", productCount,
+			"file_size_bytes", len(data))
+	} else {
+		slog.Debug("📄 Products file not found",
+			"file", ms.dataFile,
+			"error", err.Error())
 	}
 
 	// Load metadata
@@ -358,7 +398,27 @@ func (ms *MemoryStorage) loadFromFile() error {
 			ms.lastSyncTime = meta.LastSyncTime
 			ms.lastEventOffset = meta.LastEventOffset
 			ms.initializedAt = meta.InitializedAt
+			metadataLoaded = true
+			slog.Debug("✅ Metadata file loaded successfully",
+				"file", ms.metaFile,
+				"last_sync_time", meta.LastSyncTime.Format(time.RFC3339),
+				"last_event_offset", meta.LastEventOffset,
+				"initialized_at", meta.InitializedAt.Format(time.RFC3339),
+				"file_size_bytes", len(data))
+		} else {
+			slog.Warn("❌ Failed to parse metadata file",
+				"file", ms.metaFile,
+				"error", err.Error())
 		}
+	} else {
+		slog.Debug("📄 Metadata file not found",
+			"file", ms.metaFile,
+			"error", err.Error())
+	}
+
+	// Return error only if no files were loaded at all
+	if !productsLoaded && !metadataLoaded {
+		return fmt.Errorf("no existing data files found")
 	}
 
 	return nil
@@ -369,12 +429,21 @@ func (ms *MemoryStorage) saveToFile() error {
 	// Save products
 	data, err := json.MarshalIndent(ms.products, "", "  ")
 	if err != nil {
+		slog.Error("❌ Failed to marshal products for saving", "error", err.Error())
 		return fmt.Errorf("failed to marshal products: %w", err)
 	}
 
 	if err := os.WriteFile(ms.dataFile, data, 0644); err != nil {
+		slog.Error("❌ Failed to write products file",
+			"file", ms.dataFile,
+			"error", err.Error())
 		return fmt.Errorf("failed to write products file: %w", err)
 	}
+
+	slog.Debug("💾 Products saved to file",
+		"file", ms.dataFile,
+		"product_count", len(ms.products),
+		"file_size_bytes", len(data))
 
 	// Save metadata
 	return ms.saveMetadata()
@@ -391,8 +460,23 @@ func (ms *MemoryStorage) saveMetadata() error {
 
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
+		slog.Error("❌ Failed to marshal metadata for saving", "error", err.Error())
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	return os.WriteFile(ms.metaFile, data, 0644)
+	if err := os.WriteFile(ms.metaFile, data, 0644); err != nil {
+		slog.Error("❌ Failed to write metadata file",
+			"file", ms.metaFile,
+			"error", err.Error())
+		return err
+	}
+
+	slog.Debug("💾 Metadata saved to file",
+		"file", ms.metaFile,
+		"last_sync_time", meta.LastSyncTime.Format(time.RFC3339),
+		"last_event_offset", meta.LastEventOffset,
+		"product_count", meta.ProductCount,
+		"file_size_bytes", len(data))
+
+	return nil
 }
