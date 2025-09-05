@@ -21,6 +21,13 @@ type Config struct {
 	InventoryQueueBufferSize        string
 	MaxEventsInQueue                string
 	EventsFilePath                  string
+
+	// Rate limiting configuration
+	RateLimitEnabled                string
+	RateLimitType                   string
+	RateLimitRequestsPerMinute      string
+	RateLimitWindowMinutes          string
+	RateLimitAdminRequestsPerMinute string
 }
 
 // LoadConfig loads configuration from .env file and environment variables
@@ -46,6 +53,13 @@ func LoadConfig() *Config {
 		InventoryQueueBufferSize:        getEnvWithDefault("INVENTORY_QUEUE_BUFFER_SIZE", "100"),
 		MaxEventsInQueue:                getEnvWithDefault("MAX_EVENTS_IN_QUEUE", "10000"),
 		EventsFilePath:                  getEnvWithDefault("EVENTS_FILE_PATH", "./data/events.json"),
+
+		// Rate limiting configuration
+		RateLimitEnabled:                getEnvWithDefault("RATE_LIMIT_ENABLED", "true"),
+		RateLimitType:                   getEnvWithDefault("RATE_LIMIT_TYPE", "ip"),
+		RateLimitRequestsPerMinute:      getEnvWithDefault("RATE_LIMIT_REQUESTS_PER_MINUTE", "100"),
+		RateLimitWindowMinutes:          getEnvWithDefault("RATE_LIMIT_WINDOW_MINUTES", "1"),
+		RateLimitAdminRequestsPerMinute: getEnvWithDefault("RATE_LIMIT_ADMIN_REQUESTS_PER_MINUTE", "50"),
 	}
 
 	// Configure slog based on log level
@@ -62,7 +76,12 @@ func LoadConfig() *Config {
 		"inventoryWorkerCount", config.InventoryWorkerCount,
 		"inventoryQueueBufferSize", config.InventoryQueueBufferSize,
 		"maxEventsInQueue", config.MaxEventsInQueue,
-		"eventsFilePath", config.EventsFilePath)
+		"eventsFilePath", config.EventsFilePath,
+		"rateLimitEnabled", config.RateLimitEnabled,
+		"rateLimitType", config.RateLimitType,
+		"rateLimitRequestsPerMinute", config.RateLimitRequestsPerMinute,
+		"rateLimitWindowMinutes", config.RateLimitWindowMinutes,
+		"rateLimitAdminRequestsPerMinute", config.RateLimitAdminRequestsPerMinute)
 
 	return config
 }
