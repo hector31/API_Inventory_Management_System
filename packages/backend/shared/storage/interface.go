@@ -31,6 +31,7 @@ type LocalStorage interface {
 	GetAllProducts() ([]models.Product, error)
 	UpsertProduct(product models.Product) error
 	UpdateProduct(productID string, available int, version int, lastUpdated time.Time) error
+	DeleteProduct(productID string) error
 
 	// Batch operations
 	BatchUpsertProducts(products []models.Product) error

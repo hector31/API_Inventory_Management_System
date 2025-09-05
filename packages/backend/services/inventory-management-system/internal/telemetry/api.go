@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
@@ -38,11 +39,10 @@ type InventoryApiMetrics struct {
 	StatusCode   int
 	Duration     time.Duration
 	ErrorMessage string
-	// Removed high-cardinality attributes:
-	// - ClientIP (can create many unique series)
-	// - APIKey (creates series per client)
-	// - ProductID (can create thousands of series)
-	// Keep only low-cardinality business metrics
+	// Client information with controlled cardinality
+	ClientIP     string // Raw IP for logging, will be normalized for metrics
+	ClientIPType string // Normalized IP type: "internal", "external", "unknown"
+	// Business metrics
 	StoreID      string // Keep if store count is manageable
 	EventCount   int
 	ProductCount int
@@ -144,6 +144,16 @@ func (t *InventoryApiTelemetry) RegisterRequestReceived(ctx context.Context, met
 		attribute.Int("status_code", metrics.StatusCode),
 	}
 
+	// Add normalized client IP type (low cardinality)
+	if metrics.ClientIPType != "" {
+		attrs = append(attrs, attribute.String("client_ip_type", metrics.ClientIPType))
+	}
+
+	// add ip
+	if metrics.ClientIP != "" {
+		attrs = append(attrs, attribute.String("client_ip", metrics.ClientIP))
+	}
+
 	// Add store_id only if it has manageable cardinality
 	if metrics.StoreID != "" {
 		attrs = append(attrs, attribute.String("store_id", metrics.StoreID))
@@ -159,6 +169,8 @@ func (t *InventoryApiTelemetry) RegisterRequestReceived(ctx context.Context, met
 		"method", metrics.Method,
 		"endpoint", metrics.Endpoint,
 		"status_code", metrics.StatusCode,
+		"client_ip", metrics.ClientIP,
+		"client_ip_type", metrics.ClientIPType,
 		"duration_ms", metrics.Duration.Milliseconds(),
 	)
 }
@@ -178,6 +190,15 @@ func (t *InventoryApiTelemetry) RegisterRequestError(ctx context.Context, metric
 		attribute.String("error_type", categorizeError(metrics.ErrorMessage)),
 	}
 
+	// Add normalized client IP type (low cardinality)
+	if metrics.ClientIPType != "" {
+		attrs = append(attrs, attribute.String("client_ip_type", metrics.ClientIPType))
+	}
+
+	if metrics.ClientIP != "" {
+		attrs = append(attrs, attribute.String("client_ip", metrics.ClientIP))
+	}
+
 	// Add store_id only if it has manageable cardinality
 	if metrics.StoreID != "" {
 		attrs = append(attrs, attribute.String("store_id", metrics.StoreID))
@@ -189,6 +210,8 @@ func (t *InventoryApiTelemetry) RegisterRequestError(ctx context.Context, metric
 		"method", metrics.Method,
 		"endpoint", metrics.Endpoint,
 		"status_code", metrics.StatusCode,
+		"client_ip", metrics.ClientIP,
+		"client_ip_type", metrics.ClientIPType,
 		"error", metrics.ErrorMessage,
 	)
 }
@@ -207,6 +230,11 @@ func (t *InventoryApiTelemetry) RegisterRequestDuration(ctx context.Context, met
 		attribute.Int("status_code", metrics.StatusCode),
 	}
 
+	// Add normalized client IP type (low cardinality)
+	if metrics.ClientIPType != "" {
+		attrs = append(attrs, attribute.String("client_ip_type", metrics.ClientIPType))
+	}
+
 	// Add store_id only if it has manageable cardinality
 	if metrics.StoreID != "" {
 		attrs = append(attrs, attribute.String("store_id", metrics.StoreID))
@@ -219,6 +247,8 @@ func (t *InventoryApiTelemetry) RegisterRequestDuration(ctx context.Context, met
 	slog.Debug("Recorded API request duration",
 		"method", metrics.Method,
 		"endpoint", metrics.Endpoint,
+		"client_ip", metrics.ClientIP,
+		"client_ip_type", metrics.ClientIPType,
 		"duration_seconds", durationSeconds,
 	)
 }
@@ -231,6 +261,9 @@ func (t *InventoryApiTelemetry) recordEndpointSpecificMetrics(ctx context.Contex
 		if t.productQueryCounter != nil {
 			attrs := []attribute.KeyValue{
 				attribute.String("operation", "list_products"),
+				attribute.String("client_ip", metrics.ClientIP),
+				attribute.String("client_ip_type", metrics.ClientIPType),
+
 				// Remove product_count as it can vary widely
 			}
 			t.productQueryCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
@@ -241,6 +274,8 @@ func (t *InventoryApiTelemetry) recordEndpointSpecificMetrics(ctx context.Contex
 		if t.productQueryCounter != nil {
 			attrs := []attribute.KeyValue{
 				attribute.String("operation", "get_product"),
+				attribute.String("client_ip", metrics.ClientIP),
+				attribute.String("client_ip_type", metrics.ClientIPType),
 			}
 			t.productQueryCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
@@ -250,6 +285,8 @@ func (t *InventoryApiTelemetry) recordEndpointSpecificMetrics(ctx context.Contex
 		if t.inventoryUpdateCounter != nil {
 			attrs := []attribute.KeyValue{
 				attribute.String("store_id", metrics.StoreID),
+				attribute.String("client_ip", metrics.ClientIP),
+				attribute.String("client_ip_type", metrics.ClientIPType),
 				// Remove product_id to prevent high cardinality
 			}
 			t.inventoryUpdateCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
@@ -259,6 +296,8 @@ func (t *InventoryApiTelemetry) recordEndpointSpecificMetrics(ctx context.Contex
 		// Events endpoint - remove event_count as it can vary widely
 		if t.eventRetrievalCounter != nil {
 			attrs := []attribute.KeyValue{
+				attribute.String("client_ip", metrics.ClientIP),
+				attribute.String("client_ip_type", metrics.ClientIPType),
 				// Remove event_count to prevent high cardinality
 			}
 			t.eventRetrievalCounter.Add(ctx, int64(metrics.EventCount), metric.WithAttributes(attrs...))
@@ -312,4 +351,61 @@ func GetEndpointFromPath(path string) string {
 		}
 		return path
 	}
+}
+
+// NormalizeClientIP categorizes client IPs to control cardinality
+func NormalizeClientIP(clientIP string) string {
+	if clientIP == "" {
+		return "unknown"
+	}
+
+	ip := net.ParseIP(clientIP)
+	if ip == nil {
+		return "invalid"
+	}
+
+	// Check for private/internal networks
+	if isPrivateIP(ip) {
+		return "internal"
+	}
+
+	// Check for localhost
+	if ip.IsLoopback() {
+		return "localhost"
+	}
+
+	// All other IPs are considered external
+	return "external"
+}
+
+// isPrivateIP checks if an IP address is in a private network range
+func isPrivateIP(ip net.IP) bool {
+	// Define private network ranges
+	privateRanges := []string{
+		"10.0.0.0/8",     // RFC1918
+		"172.16.0.0/12",  // RFC1918
+		"192.168.0.0/16", // RFC1918
+		"169.254.0.0/16", // RFC3927 (link-local)
+		"fc00::/7",       // RFC4193 (IPv6 unique local)
+		"fe80::/10",      // RFC4291 (IPv6 link-local)
+	}
+
+	for _, rangeStr := range privateRanges {
+		_, network, err := net.ParseCIDR(rangeStr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetClientIPFromRequest extracts client IP from HTTP request headers
+func GetClientIPFromRequest(r interface{}) string {
+	// This function will be implemented in the middleware
+	// We define it here for consistency but it will be used in middleware.go
+	return ""
 }

@@ -3,77 +3,807 @@
     "SKU-001": {
       "productId": "SKU-001",
       "name": "Smartphone Samsung Galaxy S24",
-      "available": 44,
-      "version": 27,
-      "lastUpdated": "2025-09-02T22:25:31Z"
+      "available": 440,
+      "version": 28,
+      "lastUpdated": "2025-09-04T23:06:38-05:00",
+      "price": 899.99
     },
     "SKU-002": {
       "productId": "SKU-002",
       "name": "Laptop Dell XPS 13",
       "available": 35,
       "version": 20,
-      "lastUpdated": "2025-09-02T20:51:37Z"
+      "lastUpdated": "2025-09-02T20:51:37Z",
+      "price": 1299.99
     },
     "SKU-003": {
       "productId": "SKU-003",
       "name": "Auriculares Sony WH-1000XM5",
       "available": 76,
       "version": 23,
-      "lastUpdated": "2025-09-02T20:51:37Z"
+      "lastUpdated": "2025-09-02T20:51:37Z",
+      "price": 349.99
     },
     "SKU-004": {
       "productId": "SKU-004",
       "name": "Tablet iPad Air",
       "available": 15,
       "version": 7,
-      "lastUpdated": "2025-09-02T06:02:22Z"
+      "lastUpdated": "2025-09-02T06:02:22Z",
+      "price": 599.99
     },
     "SKU-005": {
       "productId": "SKU-005",
       "name": "Smart TV LG OLED 55\"",
       "available": 8,
       "version": 3,
-      "lastUpdated": "2025-09-02T07:30:00Z"
+      "lastUpdated": "2025-09-02T07:30:00Z",
+      "price": 1499.99
     },
     "SKU-006": {
       "productId": "SKU-006",
       "name": "Consola PlayStation 5",
       "available": 0,
       "version": 18,
-      "lastUpdated": "2025-09-02T12:00:00Z"
+      "lastUpdated": "2025-09-02T12:00:00Z",
+      "price": 499.99
     },
     "SKU-007": {
       "productId": "SKU-007",
       "name": "Cámara Canon EOS R6",
       "available": 15,
       "version": 9,
-      "lastUpdated": "2025-09-02T10:45:00Z"
+      "lastUpdated": "2025-09-02T10:45:00Z",
+      "price": 2499.99
     },
     "SKU-008": {
       "productId": "SKU-008",
       "name": "Smartwatch Apple Watch Series 9",
       "available": 34,
       "version": 11,
-      "lastUpdated": "2025-09-02T09:15:00Z"
+      "lastUpdated": "2025-09-02T09:15:00Z",
+      "price": 399.99
     },
     "SKU-009": {
       "productId": "SKU-009",
       "name": "Altavoz Bluetooth JBL Charge 5",
       "available": 89,
       "version": 7,
-      "lastUpdated": "2025-09-02T11:30:00Z"
+      "lastUpdated": "2025-09-02T11:30:00Z",
+      "price": 179.99
     },
     "SKU-010": {
       "productId": "SKU-010",
       "name": "Monitor Gaming ASUS ROG 27\"",
       "available": 19,
       "version": 5,
-      "lastUpdated": "2025-09-02T08:45:00Z"
+      "lastUpdated": "2025-09-02T08:45:00Z",
+      "price": 449.99
+    },
+    "SKU-011": {
+      "productId": "SKU-011",
+      "name": "Teclado Mecánico Logitech MX Keys",
+      "available": 67,
+      "version": 3,
+      "lastUpdated": "2025-09-02T14:20:00Z",
+      "price": 129.99
+    },
+    "SKU-012": {
+      "productId": "SKU-012",
+      "name": "Mouse Gaming Razer DeathAdder V3",
+      "available": 124,
+      "version": 6,
+      "lastUpdated": "2025-09-02T15:30:00Z",
+      "price": 89.99
+    },
+    "SKU-013": {
+      "productId": "SKU-013",
+      "name": "Webcam Logitech C920 HD Pro",
+      "available": 45,
+      "version": 4,
+      "lastUpdated": "2025-09-02T16:45:00Z",
+      "price": 79.99
+    },
+    "SKU-014": {
+      "productId": "SKU-014",
+      "name": "Micrófono Blue Yeti USB",
+      "available": 28,
+      "version": 2,
+      "lastUpdated": "2025-09-02T17:15:00Z",
+      "price": 149.99
+    },
+    "SKU-015": {
+      "productId": "SKU-015",
+      "name": "Disco Duro Externo Seagate 2TB",
+      "available": 156,
+      "version": 8,
+      "lastUpdated": "2025-09-02T18:00:00Z",
+      "price": 89.99
+    },
+    "SKU-016": {
+      "productId": "SKU-016",
+      "name": "SSD Samsung 980 PRO 1TB",
+      "available": 73,
+      "version": 5,
+      "lastUpdated": "2025-09-02T19:30:00Z",
+      "price": 159.99
+    },
+    "SKU-017": {
+      "productId": "SKU-017",
+      "name": "Router WiFi 6 ASUS AX6000",
+      "available": 22,
+      "version": 3,
+      "lastUpdated": "2025-09-02T20:15:00Z",
+      "price": 299.99
+    },
+    "SKU-018": {
+      "productId": "SKU-018",
+      "name": "Impresora HP LaserJet Pro",
+      "available": 31,
+      "version": 7,
+      "lastUpdated": "2025-09-02T21:00:00Z",
+      "price": 249.99
+    },
+    "SKU-019": {
+      "productId": "SKU-019",
+      "name": "Cargador Inalámbrico Anker PowerWave",
+      "available": 198,
+      "version": 4,
+      "lastUpdated": "2025-09-02T22:30:00Z",
+      "price": 39.99
+    },
+    "SKU-020": {
+      "productId": "SKU-020",
+      "name": "Power Bank Anker 20000mAh",
+      "available": 87,
+      "version": 6,
+      "lastUpdated": "2025-09-02T23:45:00Z",
+      "price": 59.99
+    },
+    "SKU-021": {
+      "productId": "SKU-021",
+      "name": "Cable USB-C a Lightning Apple",
+      "available": 234,
+      "version": 2,
+      "lastUpdated": "2025-09-03T08:15:00Z",
+      "price": 29.99
+    },
+    "SKU-022": {
+      "productId": "SKU-022",
+      "name": "Funda iPhone 14 Pro Max",
+      "available": 145,
+      "version": 5,
+      "lastUpdated": "2025-09-03T09:30:00Z",
+      "price": 24.99
+    },
+    "SKU-023": {
+      "productId": "SKU-023",
+      "name": "Protector Pantalla Samsung Galaxy S24",
+      "available": 189,
+      "version": 3,
+      "lastUpdated": "2025-09-03T10:45:00Z",
+      "price": 19.99
+    },
+    "SKU-024": {
+      "productId": "SKU-024",
+      "name": "Soporte Laptop Adjustable",
+      "available": 76,
+      "version": 4,
+      "lastUpdated": "2025-09-03T11:20:00Z",
+      "price": 49.99
+    },
+    "SKU-025": {
+      "productId": "SKU-025",
+      "name": "Hub USB-C 7 en 1",
+      "available": 92,
+      "version": 6,
+      "lastUpdated": "2025-09-03T12:00:00Z",
+      "price": 69.99
+    },
+    "SKU-026": {
+      "productId": "SKU-026",
+      "name": "Auriculares Gaming SteelSeries Arctis 7",
+      "available": 54,
+      "version": 8,
+      "lastUpdated": "2025-09-03T13:15:00Z",
+      "price": 199.99
+    },
+    "SKU-027": {
+      "productId": "SKU-027",
+      "name": "Silla Gaming DXRacer Formula",
+      "available": 18,
+      "version": 2,
+      "lastUpdated": "2025-09-03T14:30:00Z",
+      "price": 399.99
+    },
+    "SKU-028": {
+      "productId": "SKU-028",
+      "name": "Escritorio Gaming RGB LED",
+      "available": 12,
+      "version": 3,
+      "lastUpdated": "2025-09-03T15:45:00Z",
+      "price": 299.99
+    },
+    "SKU-029": {
+      "productId": "SKU-029",
+      "name": "Alfombrilla Gaming XXL RGB",
+      "available": 167,
+      "version": 4,
+      "lastUpdated": "2025-09-03T16:20:00Z",
+      "price": 39.99
+    },
+    "SKU-030": {
+      "productId": "SKU-030",
+      "name": "Ventilador CPU Cooler Master",
+      "available": 43,
+      "version": 5,
+      "lastUpdated": "2025-09-03T17:00:00Z",
+      "price": 79.99
+    },
+    "SKU-031": {
+      "productId": "SKU-031",
+      "name": "Memoria RAM Corsair 32GB DDR4",
+      "available": 29,
+      "version": 7,
+      "lastUpdated": "2025-09-03T18:15:00Z",
+      "price": 189.99
+    },
+    "SKU-032": {
+      "productId": "SKU-032",
+      "name": "Tarjeta Gráfica RTX 4070",
+      "available": 8,
+      "version": 12,
+      "lastUpdated": "2025-09-03T19:30:00Z",
+      "price": 799.99
+    },
+    "SKU-033": {
+      "productId": "SKU-033",
+      "name": "Procesador AMD Ryzen 7 7700X",
+      "available": 15,
+      "version": 9,
+      "lastUpdated": "2025-09-03T20:45:00Z",
+      "price": 349.99
+    },
+    "SKU-034": {
+      "productId": "SKU-034",
+      "name": "Placa Base ASUS ROG Strix B650",
+      "available": 21,
+      "version": 6,
+      "lastUpdated": "2025-09-03T21:20:00Z",
+      "price": 229.99
+    },
+    "SKU-035": {
+      "productId": "SKU-035",
+      "name": "Fuente Alimentación 850W 80+ Gold",
+      "available": 34,
+      "version": 4,
+      "lastUpdated": "2025-09-03T22:00:00Z",
+      "price": 159.99
+    },
+    "SKU-036": {
+      "productId": "SKU-036",
+      "name": "Caja PC Gaming RGB Tempered Glass",
+      "available": 26,
+      "version": 3,
+      "lastUpdated": "2025-09-03T23:15:00Z",
+      "price": 119.99
+    },
+    "SKU-037": {
+      "productId": "SKU-037",
+      "name": "Nintendo Switch OLED",
+      "available": 42,
+      "version": 11,
+      "lastUpdated": "2025-09-04T08:30:00Z",
+      "price": 349.99
+    },
+    "SKU-038": {
+      "productId": "SKU-038",
+      "name": "Xbox Series X",
+      "available": 7,
+      "version": 15,
+      "lastUpdated": "2025-09-04T09:45:00Z",
+      "price": 499.99
+    },
+    "SKU-039": {
+      "productId": "SKU-039",
+      "name": "Steam Deck 512GB",
+      "available": 13,
+      "version": 8,
+      "lastUpdated": "2025-09-04T10:20:00Z",
+      "price": 649.99
+    },
+    "SKU-040": {
+      "productId": "SKU-040",
+      "name": "Control Xbox Wireless",
+      "available": 89,
+      "version": 6,
+      "lastUpdated": "2025-09-04T11:00:00Z",
+      "price": 59.99
+    },
+    "SKU-041": {
+      "productId": "SKU-041",
+      "name": "Juego The Legend of Zelda: Tears of the Kingdom",
+      "available": 156,
+      "version": 4,
+      "lastUpdated": "2025-09-04T12:15:00Z",
+      "price": 59.99
+    },
+    "SKU-042": {
+      "productId": "SKU-042",
+      "name": "Juego FIFA 24",
+      "available": 203,
+      "version": 7,
+      "lastUpdated": "2025-09-04T13:30:00Z",
+      "price": 49.99
+    },
+    "SKU-043": {
+      "productId": "SKU-043",
+      "name": "Juego Call of Duty: Modern Warfare III",
+      "available": 178,
+      "version": 9,
+      "lastUpdated": "2025-09-04T14:45:00Z",
+      "price": 69.99
+    },
+    "SKU-044": {
+      "productId": "SKU-044",
+      "name": "Auriculares Inalámbricos AirPods Pro 2",
+      "available": 67,
+      "version": 12,
+      "lastUpdated": "2025-09-04T15:20:00Z",
+      "price": 249.99
+    },
+    "SKU-045": {
+      "productId": "SKU-045",
+      "name": "Altavoz Inteligente Amazon Echo Dot",
+      "available": 134,
+      "version": 5,
+      "lastUpdated": "2025-09-04T16:00:00Z",
+      "price": 49.99
+    },
+    "SKU-046": {
+      "productId": "SKU-046",
+      "name": "Bombilla Inteligente Philips Hue",
+      "available": 245,
+      "version": 3,
+      "lastUpdated": "2025-09-04T17:15:00Z",
+      "price": 24.99
+    },
+    "SKU-047": {
+      "productId": "SKU-047",
+      "name": "Cámara Seguridad Ring Indoor",
+      "available": 78,
+      "version": 6,
+      "lastUpdated": "2025-09-04T18:30:00Z",
+      "price": 89.99
+    },
+    "SKU-048": {
+      "productId": "SKU-048",
+      "name": "Termostato Inteligente Nest",
+      "available": 45,
+      "version": 4,
+      "lastUpdated": "2025-09-04T19:45:00Z",
+      "price": 199.99
+    },
+    "SKU-049": {
+      "productId": "SKU-049",
+      "name": "Aspiradora Robot Roomba i7+",
+      "available": 23,
+      "version": 8,
+      "lastUpdated": "2025-09-04T20:20:00Z",
+      "price": 599.99
+    },
+    "SKU-050": {
+      "productId": "SKU-050",
+      "name": "Cafetera Espresso Breville Barista",
+      "available": 31,
+      "version": 5,
+      "lastUpdated": "2025-09-04T21:00:00Z",
+      "price": 399.99
+    },
+    "SKU-051": {
+      "productId": "SKU-051",
+      "name": "Licuadora Vitamix A3500",
+      "available": 19,
+      "version": 3,
+      "lastUpdated": "2025-09-04T22:15:00Z",
+      "price": 449.99
+    },
+    "SKU-052": {
+      "productId": "SKU-052",
+      "name": "Freidora de Aire Ninja Foodi",
+      "available": 56,
+      "version": 7,
+      "lastUpdated": "2025-09-04T23:30:00Z",
+      "price": 179.99
+    },
+    "SKU-053": {
+      "productId": "SKU-053",
+      "name": "Microondas Samsung Smart",
+      "available": 28,
+      "version": 4,
+      "lastUpdated": "2025-09-05T08:45:00Z",
+      "price": 299.99
+    },
+    "SKU-054": {
+      "productId": "SKU-054",
+      "name": "Refrigerador LG InstaView 28 cu ft",
+      "available": 6,
+      "version": 2,
+      "lastUpdated": "2025-09-05T09:20:00Z",
+      "price": 2299.99
+    },
+    "SKU-055": {
+      "productId": "SKU-055",
+      "name": "Lavadora Samsung WF45R6100",
+      "available": 11,
+      "version": 6,
+      "lastUpdated": "2025-09-05T10:00:00Z",
+      "price": 899.99
+    },
+    "SKU-056": {
+      "productId": "SKU-056",
+      "name": "Secadora Whirlpool WED4815EW",
+      "available": 14,
+      "version": 3,
+      "lastUpdated": "2025-09-05T11:15:00Z",
+      "price": 649.99
+    },
+    "SKU-057": {
+      "productId": "SKU-057",
+      "name": "Lavavajillas Bosch 800 Series",
+      "available": 9,
+      "version": 5,
+      "lastUpdated": "2025-09-05T12:30:00Z",
+      "price": 1199.99
+    },
+    "SKU-058": {
+      "productId": "SKU-058",
+      "name": "Horno Eléctrico KitchenAid",
+      "available": 7,
+      "version": 4,
+      "lastUpdated": "2025-09-05T13:45:00Z",
+      "price": 1899.99
+    },
+    "SKU-059": {
+      "productId": "SKU-059",
+      "name": "Purificador Aire Dyson Pure Cool",
+      "available": 33,
+      "version": 6,
+      "lastUpdated": "2025-09-05T14:20:00Z",
+      "price": 549.99
+    },
+    "SKU-060": {
+      "productId": "SKU-060",
+      "name": "Humidificador Ultrasónico TaoTronics",
+      "available": 87,
+      "version": 2,
+      "lastUpdated": "2025-09-05T15:00:00Z",
+      "price": 79.99
+    },
+    "SKU-061": {
+      "productId": "SKU-061",
+      "name": "Banda Fitness Fitbit Charge 5",
+      "available": 112,
+      "version": 8,
+      "lastUpdated": "2025-09-05T16:15:00Z",
+      "price": 149.99
+    },
+    "SKU-062": {
+      "productId": "SKU-062",
+      "name": "Báscula Inteligente Withings Body+",
+      "available": 64,
+      "version": 4,
+      "lastUpdated": "2025-09-05T17:30:00Z",
+      "price": 99.99
+    },
+    "SKU-063": {
+      "productId": "SKU-063",
+      "name": "Cinta de Correr NordicTrack T Series",
+      "available": 8,
+      "version": 3,
+      "lastUpdated": "2025-09-05T18:45:00Z",
+      "price": 1299.99
+    },
+    "SKU-064": {
+      "productId": "SKU-064",
+      "name": "Bicicleta Estática Peloton Bike+",
+      "available": 5,
+      "version": 7,
+      "lastUpdated": "2025-09-05T19:20:00Z",
+      "price": 2495.99
+    },
+    "SKU-065": {
+      "productId": "SKU-065",
+      "name": "Mancuernas Ajustables Bowflex",
+      "available": 23,
+      "version": 5,
+      "lastUpdated": "2025-09-05T20:00:00Z",
+      "price": 349.99
+    },
+    "SKU-066": {
+      "productId": "SKU-066",
+      "name": "Esterilla Yoga Premium Manduka",
+      "available": 156,
+      "version": 2,
+      "lastUpdated": "2025-09-05T21:15:00Z",
+      "price": 89.99
+    },
+    "SKU-067": {
+      "productId": "SKU-067",
+      "name": "Botella Agua Inteligente HidrateSpark",
+      "available": 98,
+      "version": 6,
+      "lastUpdated": "2025-09-05T22:30:00Z",
+      "price": 59.99
+    },
+    "SKU-068": {
+      "productId": "SKU-068",
+      "name": "Proteína Whey Optimum Nutrition",
+      "available": 234,
+      "version": 4,
+      "lastUpdated": "2025-09-05T23:45:00Z",
+      "price": 49.99
+    },
+    "SKU-069": {
+      "productId": "SKU-069",
+      "name": "Libro \"Atomic Habits\" James Clear",
+      "available": 345,
+      "version": 1,
+      "lastUpdated": "2025-09-06T08:20:00Z",
+      "price": 16.99
+    },
+    "SKU-070": {
+      "productId": "SKU-070",
+      "name": "Libro \"The 7 Habits\" Stephen Covey",
+      "available": 278,
+      "version": 2,
+      "lastUpdated": "2025-09-06T09:00:00Z",
+      "price": 14.99
+    },
+    "SKU-071": {
+      "productId": "SKU-071",
+      "name": "Kindle Paperwhite 11th Gen",
+      "available": 89,
+      "version": 9,
+      "lastUpdated": "2025-09-06T10:15:00Z",
+      "price": 139.99
+    },
+    "SKU-072": {
+      "productId": "SKU-072",
+      "name": "Audífonos Bose QuietComfort 45",
+      "available": 45,
+      "version": 11,
+      "lastUpdated": "2025-09-06T11:30:00Z",
+      "price": 329.99
+    },
+    "SKU-073": {
+      "productId": "SKU-073",
+      "name": "Mochila Laptop SwissGear 1900",
+      "available": 167,
+      "version": 3,
+      "lastUpdated": "2025-09-06T12:45:00Z",
+      "price": 79.99
+    },
+    "SKU-074": {
+      "productId": "SKU-074",
+      "name": "Maleta Samsonite Winfield 3",
+      "available": 34,
+      "version": 5,
+      "lastUpdated": "2025-09-06T13:20:00Z",
+      "price": 199.99
+    },
+    "SKU-075": {
+      "productId": "SKU-075",
+      "name": "Gafas de Sol Ray-Ban Aviator",
+      "available": 123,
+      "version": 7,
+      "lastUpdated": "2025-09-06T14:00:00Z",
+      "price": 154.99
+    },
+    "SKU-076": {
+      "productId": "SKU-076",
+      "name": "Reloj Casio G-Shock GA-2100",
+      "available": 78,
+      "version": 4,
+      "lastUpdated": "2025-09-06T15:15:00Z",
+      "price": 129.99
+    },
+    "SKU-077": {
+      "productId": "SKU-077",
+      "name": "Perfume Chanel No. 5 100ml",
+      "available": 56,
+      "version": 6,
+      "lastUpdated": "2025-09-06T16:30:00Z",
+      "price": 189.99
+    },
+    "SKU-078": {
+      "productId": "SKU-078",
+      "name": "Crema Facial La Mer Moisturizing",
+      "available": 43,
+      "version": 3,
+      "lastUpdated": "2025-09-06T17:45:00Z",
+      "price": 345.99
+    },
+    "SKU-079": {
+      "productId": "SKU-079",
+      "name": "Champú Olaplex No. 4 Bond Maintenance",
+      "available": 189,
+      "version": 5,
+      "lastUpdated": "2025-09-06T18:20:00Z",
+      "price": 28.99
+    },
+    "SKU-080": {
+      "productId": "SKU-080",
+      "name": "Sérum Vitamin C The Ordinary",
+      "available": 267,
+      "version": 2,
+      "lastUpdated": "2025-09-06T19:00:00Z",
+      "price": 12.99
+    },
+    "SKU-081": {
+      "productId": "SKU-081",
+      "name": "Camiseta Nike Dri-FIT",
+      "available": 234,
+      "version": 4,
+      "lastUpdated": "2025-09-06T20:15:00Z",
+      "price": 29.99
+    },
+    "SKU-082": {
+      "productId": "SKU-082",
+      "name": "Jeans Levi's 501 Original",
+      "available": 156,
+      "version": 6,
+      "lastUpdated": "2025-09-06T21:30:00Z",
+      "price": 89.99
+    },
+    "SKU-083": {
+      "productId": "SKU-083",
+      "name": "Zapatillas Nike Air Max 270",
+      "available": 89,
+      "version": 8,
+      "lastUpdated": "2025-09-06T22:45:00Z",
+      "price": 149.99
+    },
+    "SKU-084": {
+      "productId": "SKU-084",
+      "name": "Chaqueta North Face Venture 2",
+      "available": 67,
+      "version": 3,
+      "lastUpdated": "2025-09-06T23:20:00Z",
+      "price": 99.99
+    },
+    "SKU-085": {
+      "productId": "SKU-085",
+      "name": "Gorra New Era 59FIFTY",
+      "available": 198,
+      "version": 2,
+      "lastUpdated": "2025-09-07T08:00:00Z",
+      "price": 39.99
+    },
+    "SKU-086": {
+      "productId": "SKU-086",
+      "name": "Calcetines Stance Icon No Show",
+      "available": 345,
+      "version": 1,
+      "lastUpdated": "2025-09-07T09:15:00Z",
+      "price": 14.99
+    },
+    "SKU-087": {
+      "productId": "SKU-087",
+      "name": "Cinturón Cuero Fossil",
+      "available": 123,
+      "version": 5,
+      "lastUpdated": "2025-09-07T10:30:00Z",
+      "price": 49.99
+    },
+    "SKU-088": {
+      "productId": "SKU-088",
+      "name": "Cartera Tommy Hilfiger",
+      "available": 87,
+      "version": 7,
+      "lastUpdated": "2025-09-07T11:45:00Z",
+      "price": 69.99
+    },
+    "SKU-089": {
+      "productId": "SKU-089",
+      "name": "Bolso Michael Kors Jet Set",
+      "available": 45,
+      "version": 9,
+      "lastUpdated": "2025-09-07T12:20:00Z",
+      "price": 199.99
+    },
+    "SKU-090": {
+      "productId": "SKU-090",
+      "name": "Collar Pandora Moments",
+      "available": 78,
+      "version": 4,
+      "lastUpdated": "2025-09-07T13:00:00Z",
+      "price": 89.99
+    },
+    "SKU-091": {
+      "productId": "SKU-091",
+      "name": "Anillo Swarovski Attract",
+      "available": 134,
+      "version": 3,
+      "lastUpdated": "2025-09-07T14:15:00Z",
+      "price": 79.99
+    },
+    "SKU-092": {
+      "productId": "SKU-092",
+      "name": "Pulsera Fitbit Versa 4",
+      "available": 92,
+      "version": 11,
+      "lastUpdated": "2025-09-07T15:30:00Z",
+      "price": 199.99
+    },
+    "SKU-093": {
+      "productId": "SKU-093",
+      "name": "Aretes Tiffany & Co. Return to Tiffany",
+      "available": 56,
+      "version": 6,
+      "lastUpdated": "2025-09-07T16:45:00Z",
+      "price": 295.99
+    },
+    "SKU-094": {
+      "productId": "SKU-094",
+      "name": "Juego de Sábanas Egyptian Cotton",
+      "available": 167,
+      "version": 2,
+      "lastUpdated": "2025-09-07T17:20:00Z",
+      "price": 129.99
+    },
+    "SKU-095": {
+      "productId": "SKU-095",
+      "name": "Almohada Memory Foam Tempur-Pedic",
+      "available": 89,
+      "version": 5,
+      "lastUpdated": "2025-09-07T18:00:00Z",
+      "price": 149.99
+    },
+    "SKU-096": {
+      "productId": "SKU-096",
+      "name": "Edredón Down Alternative Hypoallergenic",
+      "available": 112,
+      "version": 3,
+      "lastUpdated": "2025-09-07T19:15:00Z",
+      "price": 89.99
+    },
+    "SKU-097": {
+      "productId": "SKU-097",
+      "name": "Lámpara de Mesa LED Philips Hue Go",
+      "available": 145,
+      "version": 7,
+      "lastUpdated": "2025-09-07T20:30:00Z",
+      "price": 79.99
+    },
+    "SKU-098": {
+      "productId": "SKU-098",
+      "name": "Difusor Aromas Essential Oil",
+      "available": 203,
+      "version": 4,
+      "lastUpdated": "2025-09-07T21:45:00Z",
+      "price": 39.99
+    },
+    "SKU-099": {
+      "productId": "SKU-099",
+      "name": "Vela Aromática Bath & Body Works",
+      "available": 289,
+      "version": 2,
+      "lastUpdated": "2025-09-07T22:20:00Z",
+      "price": 24.99
+    },
+    "SKU-100": {
+      "productId": "SKU-100",
+      "name": "Marco de Fotos Digital Nixplay",
+      "available": 67,
+      "version": 8,
+      "lastUpdated": "2025-09-07T23:00:00Z",
+      "price": 199.99
     }
   },
   "metadata": {
-    "lastOffset": 1323,
-    "totalProducts": 10,
-    "lastUpdated": "2025-09-02T22:25:31Z"
+    "lastOffset": 4,
+    "totalProducts": 100,
+    "lastUpdated": "2025-09-07T23:00:00Z"
   }
 }

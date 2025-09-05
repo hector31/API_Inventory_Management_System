@@ -225,6 +225,789 @@
           }
         },
         "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16}
+      },
+      {
+        "id": 10,
+        "title": "Requests by Client IP Type",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total[5m])) by (client_ip_type)",
+            "legendFormat": "{{client_ip_type}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "barAlignment": 0,
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            }
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "bottom"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 11,
+        "title": "Client IP Type Distribution",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total[5m])) by (client_ip_type)",
+            "legendFormat": "{{client_ip_type}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "reqps",
+            "custom": {
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              }
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "pieType": "pie",
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "right"
+          },
+          "displayLabels": ["name", "percent"]
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      },
+      {
+        "id": 12,
+        "title": "Error Rate by Client IP Type",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_errors_total[5m])) by (client_ip_type) / sum(rate(inventory_api_requests_total[5m])) by (client_ip_type) * 100",
+            "legendFormat": "{{client_ip_type}} Error Rate",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "percent",
+            "min": 0,
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 5}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+      },
+      {
+        "id": 13,
+        "title": "Response Time by Client IP Type",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(inventory_api_request_duration_seconds_bucket[5m])) by (le, client_ip_type))",
+            "legendFormat": "{{client_ip_type}} (95th)",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(inventory_api_request_duration_seconds_bucket[5m])) by (le, client_ip_type))",
+            "legendFormat": "{{client_ip_type}} (50th)",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "s"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+      },
+      {
+        "id": 14,
+        "title": "Rate Limiting Violations",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(increase(inventory_api_errors_total{status_code=\"429\"}[5m]))",
+            "legendFormat": "Rate Limit Hits",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 10}
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 40}
+      },
+      {
+        "id": 15,
+        "title": "Rate Limiting by IP Type",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_errors_total{status_code=\"429\"}[5m])) by (client_ip_type)",
+            "legendFormat": "{{client_ip_type}} Rate Limited",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 18, "x": 6, "y": 40}
+      },
+      {
+        "id": 16,
+        "title": "API Methods Distribution",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total[5m])) by (method)",
+            "legendFormat": "{{method}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "reqps"
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "pieType": "pie",
+          "tooltip": {
+            "mode": "single"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "right"
+          },
+          "displayLabels": ["name", "percent"]
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 48}
+      },
+      {
+        "id": 17,
+        "title": "Admin vs Regular Endpoints",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total{endpoint=~\"/v1/admin.*\"}[5m]))",
+            "legendFormat": "Admin Endpoints",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(inventory_api_requests_total{endpoint!~\"/v1/admin.*\"}[5m]))",
+            "legendFormat": "Regular Endpoints",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 48}
+      },
+      {
+        "id": 18,
+        "title": "Event Processing Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_events_processed_total[5m]))",
+            "legendFormat": "Events Processed/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(inventory_events_published_total[5m]))",
+            "legendFormat": "Events Published/sec",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "ops"
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 48}
+      },
+      {
+        "id": 19,
+        "title": "Top Endpoints by Request Volume",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, sum(rate(inventory_api_requests_total[5m])) by (endpoint))",
+            "legendFormat": "{{endpoint}}",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 10}
+              ]
+            },
+            "unit": "reqps"
+          }
+        },
+        "options": {
+          "showHeader": true
+        },
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "job": true,
+                "instance": true
+              },
+              "indexByName": {},
+              "renameByName": {
+                "endpoint": "Endpoint",
+                "Value": "Requests/sec"
+              }
+            }
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 56}
+      },
+      {
+        "id": 20,
+        "title": "Error Breakdown by Status Code",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_errors_total[5m])) by (status_code)",
+            "legendFormat": "HTTP {{status_code}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 56}
+      },
+      {
+        "id": 21,
+        "title": "Request Size Distribution",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "sum(rate(http_request_size_bytes_bucket[5m])) by (le)",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "spectrum"
+            },
+            "unit": "bytes"
+          }
+        },
+        "options": {
+          "calculate": false,
+          "yAxis": {
+            "unit": "bytes"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 64}
+      },
+      {
+        "id": 22,
+        "title": "Response Size Distribution",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "sum(rate(http_response_size_bytes_bucket[5m])) by (le)",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "spectrum"
+            },
+            "unit": "bytes"
+          }
+        },
+        "options": {
+          "calculate": false,
+          "yAxis": {
+            "unit": "bytes"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 64}
+      },
+      {
+        "id": 23,
+        "title": "Concurrent Connections",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "http_requests_in_flight",
+            "legendFormat": "Active Connections",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 72}
+      },
+      {
+        "id": 24,
+        "title": "Memory Usage",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "go_memstats_alloc_bytes",
+            "legendFormat": "Allocated Memory",
+            "refId": "A"
+          },
+          {
+            "expr": "go_memstats_heap_inuse_bytes",
+            "legendFormat": "Heap In Use",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "bytes"
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 72}
+      },
+      {
+        "id": 25,
+        "title": "Goroutines",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "go_goroutines",
+            "legendFormat": "Active Goroutines",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 72}
+      },
+      {
+        "id": 26,
+        "title": "GC Performance",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(go_gc_duration_seconds_sum[5m]) / rate(go_gc_duration_seconds_count[5m])",
+            "legendFormat": "Average GC Duration",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(go_gc_duration_seconds_count[5m])",
+            "legendFormat": "GC Frequency",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Average GC Duration"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "s"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "GC Frequency"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "ops"
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 80}
+      },
+      {
+        "id": 27,
+        "title": "Database Connection Pool",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "db_connections_open",
+            "legendFormat": "Open Connections",
+            "refId": "A"
+          },
+          {
+            "expr": "db_connections_in_use",
+            "legendFormat": "In Use Connections",
+            "refId": "B"
+          },
+          {
+            "expr": "db_connections_idle",
+            "legendFormat": "Idle Connections",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 80}
+      },
+      {
+        "id": 28,
+        "title": "Inventory Operations Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total{endpoint=~\".*inventory.*\"}[5m])) by (method)",
+            "legendFormat": "{{method}} Operations",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "ops"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 88}
+      },
+      {
+        "id": 29,
+        "title": "Product Updates vs Queries",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total{method=\"GET\",endpoint=~\".*inventory.*\"}[5m]))",
+            "legendFormat": "Read Operations",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(inventory_api_requests_total{method=~\"POST|PUT|PATCH|DELETE\",endpoint=~\".*inventory.*\"}[5m]))",
+            "legendFormat": "Write Operations",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "ops"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 88}
+      },
+      {
+        "id": 30,
+        "title": "API Health Score",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "(1 - (sum(rate(inventory_api_errors_total[5m])) / sum(rate(inventory_api_requests_total[5m])))) * 100",
+            "legendFormat": "Health Score",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 95},
+                {"color": "green", "value": 99}
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "justifyMode": "center",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 96}
+      },
+      {
+        "id": 31,
+        "title": "Average Response Time",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(inventory_api_request_duration_seconds_bucket[5m])) by (le)) * 1000",
+            "legendFormat": "Avg Response Time",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 100},
+                {"color": "red", "value": 500}
+              ]
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "justifyMode": "center",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 96}
+      },
+      {
+        "id": 32,
+        "title": "Requests per Minute",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(inventory_api_requests_total[1m])) * 60",
+            "legendFormat": "RPM",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1000},
+                {"color": "red", "value": 5000}
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "justifyMode": "center",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 96}
+      },
+      {
+        "id": 33,
+        "title": "Active External Clients",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "count(count by (client_ip_type)(rate(inventory_api_requests_total{client_ip_type=\"external\"}[5m]) > 0))",
+            "legendFormat": "External Clients",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 50},
+                {"color": "red", "value": 100}
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "justifyMode": "center",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "textMode": "auto"
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 96}
       }
     ]
   }

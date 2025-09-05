@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -193,22 +194,8 @@ func (h *InventoryHandler) UpdateInventory(w http.ResponseWriter, r *http.Reques
 			"error", err,
 		)
 
-		// Parse error type for better error handling
-		errorCode := "update_failed"
-		details := map[string]interface{}{
-			"productId": updateReq.ProductID,
-			"error":     err.Error(),
-		}
-
-		// Check for specific error types
-		if err.Error() == "version conflict" {
-			errorCode = "version_conflict"
-			details["expectedVersion"] = updateReq.Version
-		} else if err.Error() == "insufficient inventory" {
-			errorCode = "insufficient_inventory"
-		}
-
-		h.writeErrorResponse(w, errorCode, "Failed to update inventory", http.StatusInternalServerError, details)
+		// Enhanced error handling with proper HTTP status codes
+		h.handleInventoryUpdateError(w, updateReq, err)
 		return
 	}
 
@@ -351,7 +338,202 @@ type ErrorDetail struct {
 	Details interface{} `json:"details,omitempty"`
 }
 
-// writeErrorResponse writes a structured JSON error response
+// handleInventoryUpdateError handles errors from inventory updates with proper HTTP status codes
+func (h *InventoryHandler) handleInventoryUpdateError(w http.ResponseWriter, updateReq models.UpdateRequest, err error) {
+	errorStr := err.Error()
+
+	slog.Info("Enhanced error handling called",
+		"product_id", updateReq.ProductID,
+		"error_string", errorStr)
+
+	// Try to parse the error response from central API if it's a structured error
+	if centralAPIError := h.parseCentralAPIError(errorStr); centralAPIError != nil {
+		slog.Info("Successfully parsed central API error, returning standardized response",
+			"error_type", centralAPIError.ErrorType,
+			"status_code", centralAPIError.StatusCode)
+		// Return the error in the standardized format expected by frontend
+		h.writeStandardizedErrorResponse(w, centralAPIError, updateReq.ProductID)
+		return
+	}
+
+	// Fallback: parse error string for known patterns
+	switch {
+	case strings.Contains(errorStr, "version conflict"):
+		h.writeStandardizedErrorResponse(w, &StandardizedError{
+			ErrorType:    "version_conflict",
+			ErrorMessage: errorStr,
+			StatusCode:   http.StatusConflict,
+		}, updateReq.ProductID)
+
+	case strings.Contains(errorStr, "insufficient inventory"):
+		h.writeStandardizedErrorResponse(w, &StandardizedError{
+			ErrorType:    "insufficient_inventory",
+			ErrorMessage: errorStr,
+			StatusCode:   http.StatusBadRequest,
+		}, updateReq.ProductID)
+
+	case strings.Contains(errorStr, "product not found"):
+		h.writeStandardizedErrorResponse(w, &StandardizedError{
+			ErrorType:    "product_not_found",
+			ErrorMessage: errorStr,
+			StatusCode:   http.StatusNotFound,
+		}, updateReq.ProductID)
+
+	case strings.Contains(errorStr, "invalid"):
+		h.writeStandardizedErrorResponse(w, &StandardizedError{
+			ErrorType:    "invalid_request",
+			ErrorMessage: errorStr,
+			StatusCode:   http.StatusBadRequest,
+		}, updateReq.ProductID)
+
+	default:
+		// Actual server error
+		h.writeStandardizedErrorResponse(w, &StandardizedError{
+			ErrorType:    "server_error",
+			ErrorMessage: "Internal server error occurred",
+			StatusCode:   http.StatusInternalServerError,
+		}, updateReq.ProductID)
+	}
+}
+
+// StandardizedError represents a parsed error with proper categorization
+type StandardizedError struct {
+	ErrorType    string `json:"errorType"`
+	ErrorMessage string `json:"errorMessage"`
+	ProductID    string `json:"productId,omitempty"`
+	NewVersion   int    `json:"newVersion,omitempty"`
+	NewQuantity  int    `json:"newQuantity,omitempty"`
+	LastUpdated  string `json:"lastUpdated,omitempty"`
+	StatusCode   int    `json:"-"` // Not included in JSON response
+}
+
+// parseCentralAPIError attempts to parse structured error responses from central API
+func (h *InventoryHandler) parseCentralAPIError(errorStr string) *StandardizedError {
+	slog.Debug("Parsing central API error", "error_string", errorStr)
+
+	// Look for the pattern "request failed with status XXX: {JSON}"
+	statusPattern := "request failed with status "
+	statusIndex := strings.Index(errorStr, statusPattern)
+	if statusIndex == -1 {
+		slog.Debug("No status pattern found in error string")
+		return nil
+	}
+
+	// Find the JSON part after the status
+	jsonStart := strings.Index(errorStr[statusIndex:], "{")
+	if jsonStart == -1 {
+		slog.Debug("No JSON start found after status pattern")
+		return nil
+	}
+	jsonStart += statusIndex
+
+	// Find the end of JSON (look for the last } before \n)
+	jsonEnd := strings.Index(errorStr[jsonStart:], "\\n")
+	if jsonEnd == -1 {
+		jsonEnd = len(errorStr)
+	} else {
+		jsonEnd += jsonStart
+	}
+
+	// Find the actual end of JSON
+	jsonEndBrace := strings.LastIndex(errorStr[jsonStart:jsonEnd], "}")
+	if jsonEndBrace == -1 {
+		slog.Debug("No JSON end found")
+		return nil
+	}
+	jsonEnd = jsonStart + jsonEndBrace + 1
+
+	jsonStr := errorStr[jsonStart:jsonEnd]
+	slog.Debug("Extracted JSON from error", "json", jsonStr)
+
+	// Try to parse as UpdateResponse (which contains error information)
+	var updateResp struct {
+		ProductID    string `json:"productId"`
+		Applied      bool   `json:"applied"`
+		NewQuantity  int    `json:"newQuantity"`
+		NewVersion   int    `json:"newVersion"`
+		ErrorType    string `json:"errorType"`
+		ErrorMessage string `json:"errorMessage"`
+		LastUpdated  string `json:"lastUpdated"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &updateResp); err != nil {
+		slog.Debug("Failed to parse JSON as UpdateResponse", "error", err, "json", jsonStr)
+		return nil
+	}
+
+	if updateResp.ErrorType == "" {
+		slog.Debug("No errorType found in parsed response")
+		return nil
+	}
+
+	statusCode := http.StatusInternalServerError
+
+	// Map error types to proper HTTP status codes
+	switch updateResp.ErrorType {
+	case "version_conflict":
+		statusCode = http.StatusConflict
+	case "insufficient_inventory":
+		statusCode = http.StatusBadRequest
+	case "product_not_found":
+		statusCode = http.StatusNotFound
+	case "invalid_request", "invalid_delta", "missing_product_id":
+		statusCode = http.StatusBadRequest
+	default:
+		statusCode = http.StatusInternalServerError
+	}
+
+	slog.Info("Successfully parsed central API error",
+		"error_type", updateResp.ErrorType,
+		"status_code", statusCode,
+		"product_id", updateResp.ProductID,
+		"new_version", updateResp.NewVersion)
+
+	return &StandardizedError{
+		ErrorType:    updateResp.ErrorType,
+		ErrorMessage: updateResp.ErrorMessage,
+		ProductID:    updateResp.ProductID,
+		NewVersion:   updateResp.NewVersion,
+		NewQuantity:  updateResp.NewQuantity,
+		LastUpdated:  updateResp.LastUpdated,
+		StatusCode:   statusCode,
+	}
+}
+
+// writeStandardizedErrorResponse writes error response in the format expected by frontend
+func (h *InventoryHandler) writeStandardizedErrorResponse(w http.ResponseWriter, stdErr *StandardizedError, productID string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(stdErr.StatusCode)
+
+	// Create response in the format expected by frontend
+	response := map[string]interface{}{
+		"productId":    productID,
+		"errorType":    stdErr.ErrorType,
+		"errorMessage": stdErr.ErrorMessage,
+	}
+
+	// Include additional fields if available
+	if stdErr.NewVersion > 0 {
+		response["newVersion"] = stdErr.NewVersion
+	}
+	if stdErr.NewQuantity >= 0 {
+		response["newQuantity"] = stdErr.NewQuantity
+	}
+	if stdErr.LastUpdated != "" {
+		response["lastUpdated"] = stdErr.LastUpdated
+	}
+
+	json.NewEncoder(w).Encode(response)
+
+	slog.Info("Returned standardized error response",
+		"product_id", productID,
+		"error_type", stdErr.ErrorType,
+		"status_code", stdErr.StatusCode,
+		"has_version", stdErr.NewVersion > 0,
+		"has_quantity", stdErr.NewQuantity >= 0)
+}
+
+// writeErrorResponse writes a structured JSON error response (legacy format)
 func (h *InventoryHandler) writeErrorResponse(w http.ResponseWriter, code, message string, statusCode int, details interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)

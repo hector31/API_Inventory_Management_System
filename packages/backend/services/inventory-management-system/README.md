@@ -1,250 +1,725 @@
-# Inventory Management API
+# Central Inventory Management API
 
-A distributed inventory management system API built for the technical interview exercise. This server implements all the endpoints defined in the Architecture_brief.md with basic placeholder functionality.
+The Central Inventory Management API serves as the **single source of truth** for all inventory operations in the distributed system. It provides high-performance, fault-tolerant inventory management with advanced features including Optimistic Concurrency Control (OCC), event-driven architecture, and comprehensive observability.
 
-## Quick Start
+## 🎯 API Overview
 
-### Prerequisites
-- Go 1.22 or higher
-- Git
+### Role in the Distributed System
+- **Single Source of Truth**: Authoritative inventory data for all stores
+- **Event Publisher**: Publishes inventory changes to store APIs via event streaming
+- **Concurrency Manager**: Handles concurrent updates using OCC with version-based conflict resolution
+- **Admin Interface**: Provides administrative operations for product management
 
-### Installation and Setup
+### Key Capabilities
+- ✅ **Optimistic Concurrency Control** with version-based conflict detection
+- ✅ **Idempotency** with TTL-based caching to prevent duplicate operations
+- ✅ **Event-Driven Architecture** with real-time event streaming and long polling
+- ✅ **Rate Limiting** with IP-based and admin-specific controls
+- ✅ **Comprehensive Observability** with structured logging and OpenTelemetry metrics
+- ✅ **Worker Pool Architecture** for high-throughput concurrent processing
 
-1. Navigate to the project directory:
+## 🚀 Quick Start Guide
+
+### Running with Docker (Recommended)
 ```bash
-cd API_Inventory_Management_System
+# Build the container
+docker build -t central-inventory-api .
+
+# Run with default configuration
+docker run -p 8081:8081 -p 9080:9080 central-inventory-api
+
+# Run with custom environment variables
+docker run -p 8081:8081 -p 9080:9080 \
+  -e LOG_LEVEL=debug \
+  -e INVENTORY_WORKER_COUNT=8 \
+  -e RATE_LIMIT_REQUESTS_PER_MINUTE=200 \
+  central-inventory-api
 ```
 
-2. Install dependencies:
+### Running with Go (Development)
 ```bash
-make deps
-# or manually: go mod tidy
+# Install dependencies
+go mod download
+
+# Set environment variables (optional)
+export PORT=8081
+export LOG_LEVEL=debug
+export API_KEYS=demo,dev-key
+export ADMIN_API_KEYS=admin-demo,admin-dev-key
+
+# Run the server
+go run cmd/server/main.go
+
+# Or build and run
+go build -o inventory-api cmd/server/main.go
+./inventory-api
 ```
 
-3. Run the server:
+### Health Check
 ```bash
-make run
-# or manually: go run ./cmd/server
+# Verify the API is running
+curl http://localhost:8081/health
+
+# Check metrics endpoint
+curl http://localhost:9080/metrics
 ```
 
-The server will start on port 8080 by default.
+## 📚 API Endpoints Documentation
 
-## API Endpoints
-
-All API endpoints are versioned using URL path versioning (e.g., `/v1/`). All endpoints require authentication via `X-API-Key` header. For testing, use `demo` as the API key.
-
-### Central Inventory API (v1)
-
-#### Mutate Stock
+### Authentication
+All endpoints require an API key via the `X-API-Key` header:
 ```bash
-POST /v1/inventory/updates
-Content-Type: application/json
+# Regular endpoints
 X-API-Key: demo
 
+# Admin endpoints (require admin API key)
+X-API-Key: admin-demo
+```
+
+### Inventory Endpoints (`/v1/inventory/*`)
+
+#### 1. Update Inventory
+**POST** `/v1/inventory/updates`
+
+Updates product inventory with OCC and idempotency support.
+
+**Single Update Request:**
+```json
 {
-  "storeId": "store-7",
-  "productId": "SKU-123",
-  "delta": -1,
-  "version": 7,
-  "idempotencyKey": "unique-key-123"
+  "storeId": "store-s1",
+  "productId": "PROD-001",
+  "delta": -2,
+  "version": 5,
+  "idempotencyKey": "store-s1-order-12345"
 }
 ```
 
-#### Bulk Sync
-```bash
-POST /v1/inventory/sync
-Content-Type: application/json
-X-API-Key: demo
-
+**Batch Update Request:**
+```json
 {
-  "storeId": "store-7",
-  "mode": "merge",
-  "products": [
-    {"id": "SKU-1", "qty": 20, "version": 3}
+  "storeId": "store-s1",
+  "updates": [
+    {
+      "productId": "PROD-001",
+      "delta": -1,
+      "version": 5,
+      "idempotencyKey": "batch-item-1"
+    },
+    {
+      "productId": "PROD-002", 
+      "delta": -3,
+      "version": 2,
+      "idempotencyKey": "batch-item-2"
+    }
   ]
 }
 ```
 
-#### Read Product
+**Response:**
+```json
+{
+  "productId": "PROD-001",
+  "newQuantity": 8,
+  "newVersion": 6,
+  "applied": true,
+  "lastUpdated": "2024-01-15T10:30:00Z"
+}
+```
+
+**Error Response (Version Conflict):**
+```json
+{
+  "productId": "PROD-001",
+  "applied": false,
+  "newQuantity": 10,
+  "newVersion": 6,
+  "errorType": "version_conflict",
+  "errorMessage": "version conflict: expected 6, got 5"
+}
+```
+
+#### 2. Get Product
+**GET** `/v1/inventory/{productId}`
+
+Retrieves detailed information for a specific product.
+
+**Response:**
+```json
+{
+  "productId": "PROD-001",
+  "name": "Wireless Headphones",
+  "available": 10,
+  "version": 6,
+  "lastUpdated": "2024-01-15T10:30:00Z",
+  "price": 99.99
+}
+```
+
+#### 3. List Products
+**GET** `/v1/inventory?limit=50&cursor=next_page_token`
+
+Lists products with pagination support.
+
+**Query Parameters:**
+- `limit` (optional): Number of items per page (default: 50, max: 100)
+- `cursor` (optional): Pagination cursor for next page
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "productId": "PROD-001",
+      "name": "Wireless Headphones",
+      "available": 10,
+      "version": 6,
+      "lastUpdated": "2024-01-15T10:30:00Z",
+      "price": 99.99
+    }
+  ],
+  "nextCursor": "eyJvZmZzZXQiOjUwfQ=="
+}
+```
+
+#### 4. Event Streaming
+**GET** `/v1/inventory/events?offset=0&limit=100&wait=30`
+
+Streams inventory change events with long polling support.
+
+**Query Parameters:**
+- `offset` (required): Starting event offset
+- `limit` (optional): Maximum events to return (default: 100)
+- `wait` (optional): Long polling timeout in seconds (0-60)
+
+**Response:**
+```json
+{
+  "events": [
+    {
+      "offset": 1001,
+      "timestamp": "2024-01-15T10:30:00Z",
+      "eventType": "inventory_updated",
+      "productId": "PROD-001",
+      "version": 6,
+      "data": {
+        "productId": "PROD-001",
+        "name": "Wireless Headphones",
+        "available": 8,
+        "version": 6,
+        "lastUpdated": "2024-01-15T10:30:00Z",
+        "price": 99.99
+      }
+    }
+  ],
+  "nextOffset": 1002,
+  "hasMore": false,
+  "count": 1
+}
+```
+
+### Admin Endpoints (`/v1/admin/*`)
+
+#### 1. Create Products
+**POST** `/v1/admin/products/create`
+
+Creates new products in the inventory.
+
+**Request:**
+```json
+{
+  "products": [
+    {
+      "productId": "PROD-NEW-001",
+      "name": "New Product",
+      "available": 100,
+      "price": 29.99
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "productId": "PROD-NEW-001",
+      "success": true,
+      "newVersion": 1,
+      "lastUpdated": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "summary": {
+    "totalRequests": 1,
+    "successfulCreations": 1,
+    "failedCreations": 0
+  }
+}
+```
+
+#### 2. Set Product Properties
+**PUT** `/v1/admin/products/set`
+
+Updates product properties (name, available quantity, price).
+
+**Request:**
+```json
+{
+  "products": [
+    {
+      "productId": "PROD-001",
+      "name": "Updated Product Name",
+      "available": 50,
+      "price": 79.99
+    }
+  ]
+}
+```
+
+#### 3. Delete Products
+**DELETE** `/v1/admin/products/delete`
+
+Deletes products from the inventory.
+
+**Request:**
+```json
+{
+  "productIds": ["PROD-001", "PROD-002"]
+}
+```
+
+#### 4. Rate Limit Status
+**GET** `/v1/admin/rate-limit/status`
+
+Returns current rate limiting status and statistics.
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "type": "ip",
+  "requestsPerMinute": 100,
+  "adminRequestsPerMinute": 50,
+  "currentClients": [
+    {
+      "clientId": "192.168.1.100",
+      "requestCount": 45,
+      "windowStart": "2024-01-15T10:29:00Z",
+      "isBlocked": false
+    }
+  ]
+}
+```
+
+## ⚙️ Configuration Reference
+
+### Environment Variables
+
+#### Server Configuration
 ```bash
-GET /v1/inventory/{productId}
-X-API-Key: demo
+PORT=8081                                    # Server port (default: 8080)
+LOG_LEVEL=info                              # Logging level: debug, info, warn, error
+ENVIRONMENT=development                      # Environment: development, staging, production
 ```
 
-#### Global Availability
+#### Authentication
 ```bash
-GET /v1/inventory/global/{productId}
-X-API-Key: demo
+API_KEYS=demo,central-api-key               # Comma-separated regular API keys
+ADMIN_API_KEYS=admin-demo,admin-central-key # Comma-separated admin API keys
 ```
 
-#### List Products
+#### Worker Pool & Performance
 ```bash
-GET /v1/inventory?cursor=&limit=50
-X-API-Key: demo
+INVENTORY_WORKER_COUNT=4                    # Number of worker goroutines (1-10)
+INVENTORY_QUEUE_BUFFER_SIZE=500             # Update queue buffer size (100-1000)
 ```
 
-### Replication API (v1)
-
-#### Get Snapshot
+#### Data Persistence
 ```bash
-GET /v1/replication/snapshot
-X-API-Key: demo
+DATA_PATH=./data/inventory_test_data.json   # Inventory data file path
+ENABLE_JSON_PERSISTENCE=true               # Enable file persistence (true/false)
 ```
 
-#### Get Changes
+#### Caching & Idempotency
 ```bash
-GET /v1/replication/changes?fromOffset=1287&limit=500&longPollSeconds=20
-X-API-Key: demo
+IDEMPOTENCY_CACHE_TTL=2m                   # TTL for idempotency cache (e.g., 1m, 5m)
+IDEMPOTENCY_CACHE_CLEANUP_INTERVAL=30s     # Cache cleanup interval
 ```
 
-### System Endpoints
-
-#### Health Check
+#### Event System
 ```bash
-GET /health
-# No authentication required, unversioned system endpoint
+MAX_EVENTS_IN_QUEUE=10000                  # Maximum events in memory
+EVENTS_FILE_PATH=./data/events.json        # Events persistence file
 ```
 
-
-
-### Health Check
+#### Rate Limiting
 ```bash
-GET /health
-# No authentication required
+RATE_LIMIT_ENABLED=true                    # Enable rate limiting (true/false)
+RATE_LIMIT_TYPE=ip                         # Type: ip, global, both
+RATE_LIMIT_REQUESTS_PER_MINUTE=100         # Regular endpoint limit
+RATE_LIMIT_WINDOW_MINUTES=1                # Rate limit window
+RATE_LIMIT_ADMIN_REQUESTS_PER_MINUTE=50    # Admin endpoint limit
 ```
 
-## Testing the API
+### Configuration Examples
 
-### Example curl commands:
-
-1. **Create/Update inventory:**
+#### High-Performance Setup
 ```bash
-curl -H 'X-API-Key: demo' -H 'Content-Type: application/json' \
-  -X POST http://localhost:8080/v1/inventory/updates \
-  -d '{"storeId":"store-7","productId":"SKU-123","delta":5,"version":0,"idempotencyKey":"test-key-1"}'
+INVENTORY_WORKER_COUNT=8
+INVENTORY_QUEUE_BUFFER_SIZE=1000
+RATE_LIMIT_REQUESTS_PER_MINUTE=500
+MAX_EVENTS_IN_QUEUE=50000
 ```
 
-2. **Read product:**
+#### Development Setup
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/v1/inventory/SKU-123
+LOG_LEVEL=debug
+ENVIRONMENT=development
+RATE_LIMIT_ENABLED=false
+ENABLE_JSON_PERSISTENCE=true
 ```
 
-3. **Get global availability:**
+#### Production Setup
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/v1/inventory/global/SKU-123
+LOG_LEVEL=info
+ENVIRONMENT=production
+INVENTORY_WORKER_COUNT=6
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_TYPE=both
+IDEMPOTENCY_CACHE_TTL=5m
 ```
 
-4. **List products:**
+## 🏗️ Architecture Details
+
+### Optimistic Concurrency Control (OCC) Implementation
+
+The Central API implements OCC using version-based conflict detection:
+
+#### Version Management
+- Each product has a `version` field that increments with every change
+- Clients must provide the expected version when making updates
+- Updates fail with `version_conflict` error if versions don't match
+
+#### OCC Flow
+```go
+// 1. Client reads product with current version
+GET /v1/inventory/PROD-001
+// Response: {"productId": "PROD-001", "available": 10, "version": 5}
+
+// 2. Client submits update with expected version
+POST /v1/inventory/updates
+{
+  "productId": "PROD-001",
+  "delta": -2,
+  "version": 5,  // Must match current version
+  "idempotencyKey": "order-12345"
+}
+
+// 3. API validates version and applies update atomically
+// Success: version incremented to 6
+// Conflict: returns current version and quantity for retry
+```
+
+#### Product-Level Locking
+- Fine-grained locking per product ID (not global locking)
+- Read operations use read locks for concurrent access
+- Write operations use write locks for exclusive access
+- Prevents deadlocks and maximizes concurrency
+
+### Event-Driven Architecture
+
+#### Event Queue System
+- **In-Memory Queue**: High-performance event storage with configurable rotation
+- **File Persistence**: Events persisted to disk for durability
+- **Long Polling**: Clients can wait for new events (0-60 seconds)
+- **Offset-Based**: Sequential event ordering with offset tracking
+
+#### Event Types
+```json
+{
+  "eventType": "inventory_updated",    // Product quantity changed
+  "eventType": "product_created",      // New product added
+  "eventType": "product_deleted",      // Product removed
+  "eventType": "product_modified"      // Product properties changed
+}
+```
+
+#### Event Publishing Flow
+```go
+// 1. Inventory update processed successfully
+// 2. Event published to queue asynchronously
+// 3. Store APIs poll for events via /v1/inventory/events
+// 4. Store APIs update local cache based on events
+```
+
+### Idempotency Handling
+
+#### TTL-Based Cache
+- Idempotency keys cached with configurable TTL (default: 2 minutes)
+- Automatic cleanup of expired entries
+- Thread-safe concurrent access
+
+#### Idempotency Flow
+```go
+// 1. Check if idempotency key exists in cache
+if cachedResult := cache.Get(idempotencyKey); cachedResult != nil {
+    return cachedResult // Return cached result immediately
+}
+
+// 2. Process update operation
+result := processUpdate(request)
+
+// 3. Cache result for future identical requests
+cache.Set(idempotencyKey, result, TTL)
+```
+
+#### Key Generation Best Practices
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/v1/inventory
+# Store-specific prefix to avoid conflicts
+"store-s1-order-12345"
+"store-s2-purchase-67890"
+
+# Include operation context
+"store-s1-restock-batch-001"
+"admin-bulk-update-20240115"
 ```
 
-5. **Get replication snapshot:**
+### Rate Limiting Mechanisms
+
+#### IP-Based Rate Limiting
+- Tracks requests per IP address
+- Sliding window algorithm
+- Configurable requests per minute
+- Automatic reset after window expires
+
+#### Admin Rate Limiting
+- Separate limits for admin endpoints
+- Typically lower limits due to higher resource usage
+- Independent of regular endpoint limits
+
+#### Rate Limiting Types
 ```bash
-curl -H 'X-API-Key: demo' http://localhost:8080/v1/replication/snapshot
+# IP-based: Limit per client IP
+RATE_LIMIT_TYPE=ip
+
+# Global: Limit total requests across all clients
+RATE_LIMIT_TYPE=global
+
+# Both: Apply whichever limit is hit first
+RATE_LIMIT_TYPE=both
 ```
 
-6. **Health check (unversioned):**
-```bash
-curl http://localhost:8080/health
+## 📊 Observability Features
+
+### Structured Logging
+- **JSON Format**: Machine-readable logs with structured fields
+- **Contextual Information**: Request ID, client IP, operation details
+- **Log Levels**: debug, info, warn, error with configurable filtering
+- **Performance Metrics**: Request duration, queue sizes, worker utilization
+
+#### Log Examples
+```json
+{
+  "time": "2024-01-15T10:30:00Z",
+  "level": "INFO",
+  "msg": "Inventory update processed successfully",
+  "product_id": "PROD-001",
+  "delta": -2,
+  "new_quantity": 8,
+  "new_version": 6,
+  "idempotency_key": "store-s1-order-12345",
+  "processing_time_ms": 15
+}
 ```
 
-## Current Implementation Status
+### OpenTelemetry Metrics
 
-This is a **basic server setup** with route definitions and placeholder responses. The current implementation includes:
+#### Business Metrics
+- `inventory_api_requests_total`: Total API requests by endpoint and method
+- `inventory_api_errors_total`: Error count by status code and endpoint
+- `inventory_api_request_duration_seconds`: Request latency histograms
+- `inventory_updates_processed_total`: Successful inventory updates
+- `inventory_version_conflicts_total`: OCC version conflicts
 
-✅ **Completed:**
-- All Central Inventory API endpoints defined in Architecture_brief.md
-- **API versioning with `/v1/` prefix** for all business endpoints
-- Proper HTTP methods (GET, POST)
-- Authentication middleware (X-API-Key header)
-- Structured request/response types
-- Error handling with standard error format
-- JSON request/response handling
-- Route parameter extraction
-- Query parameter handling
-- Clean project structure following Go best practices
-- Separation of concerns with proper package organization
-- **Unversioned system endpoints** (health check)
+#### System Metrics
+- `inventory_worker_queue_size`: Current queue size
+- `inventory_worker_active_count`: Active worker goroutines
+- `inventory_cache_hits_total`: Idempotency cache hit rate
+- `inventory_events_published_total`: Events published to queue
+- `inventory_events_queue_size`: Current event queue size
 
-🚧 **Placeholder/Mock Responses:**
-- All endpoints return static placeholder data
-- No actual inventory state management
-- No persistence layer
-- No optimistic concurrency control (OCC)
-- No idempotency handling
-- No replication logic
+#### Client Metrics (Advanced)
+- `inventory_api_requests_by_client_ip_type`: Requests by IP type (external/internal/localhost)
+- `inventory_rate_limit_violations_total`: Rate limiting violations by IP type
+- `inventory_api_response_time_by_client_type`: Response time by client type
 
-## Next Steps for Full Implementation
+### Monitoring Integration
+- **Prometheus**: Metrics scraping endpoint at `:9080/metrics`
+- **Grafana**: Pre-built dashboard with 33 panels
+- **Health Checks**: Comprehensive health endpoint with dependency status
+- **Alerting**: Ready-to-use alert rules for critical metrics
 
-1. **State Management:** Implement in-memory inventory state
-2. **Persistence:** Add JSON file-based persistence (events.log.jsonl, state.json)
-3. **Concurrency Control:** Implement optimistic concurrency control (OCC)
-4. **Idempotency:** Add idempotency key handling
-5. **Replication:** Implement event-based replication system
-6. **Store Node:** Create separate store node server (cmd/store)
-7. **Observability:** Add OpenTelemetry integration
-8. **Testing:** Add comprehensive unit and integration tests
-9. **Service Layer:** Add business logic layer between handlers and data
+## 🛠️ Development Guide
 
-## API Versioning Strategy
-
-This API implements **URL path versioning** following REST API best practices:
-
-- **Version Format**: `/v1/`, `/v2/`, etc.
-- **Current Version**: v1 (all endpoints prefixed with `/v1/`)
-- **Backward Compatibility**: Future versions will maintain compatibility
-- **System Endpoints**: Health check remains unversioned (`/health`)
-- **Evolution Ready**: Structure supports easy addition of v2, v3, etc.
-
-### Benefits:
-- **Explicit**: Version is clearly visible in the URL
-- **Cacheable**: Different versions can be cached separately
-- **Testable**: Easy to test different versions
-- **Client-friendly**: Clients can easily target specific versions
-
-## Project Structure
-
-The project follows Go best practices and standard project layout:
-
+### Project Structure
 ```
-API_Inventory_Management_System/
-├── cmd/
-│   └── server/          # Application entry point
-│       └── main.go      # Main server application
-├── internal/            # Private application code
+packages/backend/services/inventory-management-system/
+├── cmd/server/           # Application entry point
+├── internal/
+│   ├── config/          # Configuration management
 │   ├── handlers/        # HTTP request handlers
-│   │   ├── inventory.go # Inventory management endpoints
-│   │   ├── replication.go # Replication endpoints
-│   │   └── health.go    # Health check endpoint
-│   ├── middleware/      # HTTP middleware
-│   │   └── auth.go      # Authentication middleware
-│   └── models/          # Data models and types
-│       └── types.go     # Request/response types
-├── docs/                # Documentation
-├── go.mod              # Go module definition
-├── Makefile            # Build and run commands
-└── README.md           # This file
+│   ├── services/        # Business logic layer
+│   ├── events/          # Event queue implementation
+│   ├── middleware/      # HTTP middleware (auth, rate limiting)
+│   ├── models/          # Request/response models
+│   ├── cache/           # TTL cache implementation
+│   └── telemetry/       # Observability and metrics
+├── data/                # Sample data and persistence
+├── monitoring/          # Grafana dashboards and configs
+├── tests/               # Test suites
+└── docs/                # Additional documentation
 ```
 
-## Architecture
+### Key Components
 
-This server follows the distributed architecture outlined in the Architecture_brief.md:
-- **Central Inventory API:** Single source of truth for inventory mutations
-- **Replication System:** Event-based synchronization between central and stores
-- **Consistency Model:** CP (Consistency + Partition tolerance) for writes, eventual consistency for reads
+#### InventoryService (`internal/services/`)
+- Core business logic for inventory operations
+- OCC implementation with product-level locking
+- Worker pool for concurrent processing
+- Idempotency cache management
 
-## Environment Variables
+#### EventQueue (`internal/events/`)
+- Event publishing and streaming
+- File persistence with rotation
+- Long polling support
+- Offset-based event ordering
 
-- `PORT`: Server port (default: 8080)
-- `API_KEYS`: Comma-separated list of valid API keys (default: demo)
+#### Middleware (`internal/middleware/`)
+- API key authentication
+- Rate limiting enforcement
+- Request logging and metrics
+- CORS handling
 
-## Make Commands
+### Testing Procedures
 
-- `make run`: Start the server
-- `make build`: Build the binary
-- `make test`: Run tests
-- `make deps`: Install dependencies
-- `make clean`: Clean build artifacts
-- `make fmt`: Format code
-- `make help`: Show available commands
+#### Unit Tests
+```bash
+# Run all unit tests
+go test ./internal/...
+
+# Run with coverage
+go test -cover ./internal/...
+
+# Run specific test suite
+go test ./internal/services/
+```
+
+#### Integration Tests
+```bash
+# Run integration tests
+go test ./tests/integration/
+
+# Test with real dependencies
+docker-compose -f docker-compose.test.yml up -d
+go test ./tests/integration/ -tags=integration
+```
+
+#### Load Testing
+```bash
+# Run load tests
+go test ./tests/load/
+
+# Custom load test
+./tests/load/run_load_test.sh --concurrent=50 --duration=60s
+```
+
+### Deployment Considerations
+
+#### Container Deployment
+- Multi-stage Docker build for optimized images
+- Non-root user for security
+- Health checks for orchestration
+- Volume mounts for data persistence
+
+#### Environment-Specific Configs
+```bash
+# Development
+LOG_LEVEL=debug
+RATE_LIMIT_ENABLED=false
+
+# Staging
+LOG_LEVEL=info
+INVENTORY_WORKER_COUNT=4
+
+# Production
+LOG_LEVEL=warn
+INVENTORY_WORKER_COUNT=8
+RATE_LIMIT_ENABLED=true
+```
+
+#### Scaling Considerations
+- Horizontal scaling requires external event queue (Redis/RabbitMQ)
+- Database migration for multi-instance deployments
+- Load balancer configuration for sticky sessions
+- Shared cache for idempotency across instances
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Version Conflicts
+**Symptom**: High rate of `version_conflict` errors
+**Cause**: Concurrent updates or stale client data
+**Solution**:
+- Implement exponential backoff retry logic
+- Reduce update frequency
+- Check client-side caching strategies
+
+#### High Memory Usage
+**Symptom**: Increasing memory consumption
+**Cause**: Large event queue or cache growth
+**Solution**:
+- Reduce `MAX_EVENTS_IN_QUEUE`
+- Lower `IDEMPOTENCY_CACHE_TTL`
+- Monitor with `go_memstats_*` metrics
+
+#### Rate Limiting Issues
+**Symptom**: Clients receiving 429 errors
+**Cause**: Rate limits too restrictive
+**Solution**:
+- Increase `RATE_LIMIT_REQUESTS_PER_MINUTE`
+- Check client request patterns
+- Consider `RATE_LIMIT_TYPE=global` for burst handling
+
+#### Event Queue Lag
+**Symptom**: Store APIs not receiving events promptly
+**Cause**: Event queue overflow or processing delays
+**Solution**:
+- Increase `INVENTORY_WORKER_COUNT`
+- Monitor `inventory_events_queue_size` metric
+- Check event processing performance
+
+### Debug Commands
+```bash
+# Check current configuration
+curl http://localhost:8081/health
+
+# Monitor metrics
+curl http://localhost:9080/metrics | grep inventory_
+
+# Check rate limit status (admin key required)
+curl -H "X-API-Key: admin-demo" http://localhost:8081/v1/admin/rate-limit/status
+
+# View recent events
+curl -H "X-API-Key: demo" "http://localhost:8081/v1/inventory/events?offset=0&limit=10"
+```
+
+### Performance Tuning
+- **Worker Count**: Start with CPU cores × 2, adjust based on load
+- **Queue Buffer**: Increase for high-throughput scenarios
+- **Cache TTL**: Balance between memory usage and idempotency protection
+- **Event Queue Size**: Size based on expected event volume and retention needs
+
+---
+
+**🚀 Ready to integrate?** The Central API provides the foundation for your distributed inventory system with enterprise-grade reliability and performance!

@@ -2,14 +2,46 @@ package telemetry
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // TelemetryMiddleware wraps HTTP handlers to automatically collect telemetry
 type TelemetryMiddleware struct {
 	telemetry *InventoryApiTelemetry
+}
+
+// getClientIP extracts the client IP address from the request
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (for load balancers/proxies)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For can contain multiple IPs, take the first one
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			ip := strings.TrimSpace(ips[0])
+			if net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		if net.ParseIP(xri) != nil {
+			return xri
+		}
+	}
+
+	// Fall back to RemoteAddr
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return host
 }
 
 // NewTelemetryMiddleware creates a new telemetry middleware
@@ -76,11 +108,16 @@ func (w *responseWriterWrapper) Write(data []byte) (int, error) {
 
 // extractMetricsFromRequest extracts telemetry data from the HTTP request
 func (tm *TelemetryMiddleware) extractMetricsFromRequest(r *http.Request) InventoryApiMetrics {
+	// Extract client IP and normalize it for low cardinality
+	clientIP := getClientIP(r)
+	clientIPType := NormalizeClientIP(clientIP)
+
 	metrics := InventoryApiMetrics{
-		Method:   r.Method,
-		Endpoint: GetEndpointFromPath(r.URL.Path),
-		// Removed high-cardinality attributes:
-		// - ClientIP (can create many unique series)
+		Method:       r.Method,
+		Endpoint:     GetEndpointFromPath(r.URL.Path),
+		ClientIP:     clientIP,     // Raw IP for logging
+		ClientIPType: clientIPType, // Normalized for metrics (low cardinality)
+		// Removed other high-cardinality attributes:
 		// - APIKey (creates series per client)
 		// - ProductID extraction (can create thousands of series)
 	}
