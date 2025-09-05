@@ -20,6 +20,12 @@ services:
       - IDEMPOTENCY_CACHE_TTL=2m
       - IDEMPOTENCY_CACHE_CLEANUP_INTERVAL=30s
       - API_KEYS=demo,central-api-key
+      - ADMIN_API_KEYS=admin-demo,admin-central-key
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_TYPE=ip
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=100
+      - RATE_LIMIT_WINDOW_MINUTES=1
+      - RATE_LIMIT_ADMIN_REQUESTS_PER_MINUTE=50
       - MAX_EVENTS_IN_QUEUE=10000
       - EVENTS_FILE_PATH=./data/events.json
       # OpenTelemetry Configuration

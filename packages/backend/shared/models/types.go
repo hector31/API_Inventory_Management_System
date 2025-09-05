@@ -115,4 +115,5 @@ type EventsResponse struct {
 const (
 	EventTypeProductUpdated = "product_updated"
 	EventTypeProductCreated = "product_created"
+	EventTypeProductDeleted = "product_deleted"
 )

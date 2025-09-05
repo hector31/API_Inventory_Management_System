@@ -39,18 +39,34 @@ FROM nginx:alpine
 # 📦 Copy processed static files
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# 🔧 Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# 🔧 Copy nginx configuration scripts
+COPY generate-nginx-config.sh /generate-nginx-config.sh
+COPY start-nginx.sh /start-nginx.sh
+
+# Make scripts executable
+RUN chmod +x /generate-nginx-config.sh /start-nginx.sh
 
 # 🏥 Install curl for health checks
 RUN apk add --no-cache curl
+
+# 📋 Build arguments for runtime environment variables
+ARG REACT_APP_STORE_API_URL=http://store-s1:8083
+ARG REACT_APP_STORE_ID=store-s1
+ARG REACT_APP_STORE_NAME=Store S1
+ARG REACT_APP_API_BASE_URL=/api
+
+# 🔧 Set environment variables for runtime
+ENV REACT_APP_STORE_API_URL=$REACT_APP_STORE_API_URL
+ENV REACT_APP_STORE_ID=$REACT_APP_STORE_ID
+ENV REACT_APP_STORE_NAME=$REACT_APP_STORE_NAME
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
 
 # 🌐 Expose port
 EXPOSE 80
 
 # ❤️ Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
+    CMD curl -f http://localhost/health || exit 1
 
-# 🚀 Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# 🚀 Start nginx with dynamic configuration
+CMD ["/start-nginx.sh"]
