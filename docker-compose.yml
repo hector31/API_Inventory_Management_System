@@ -67,6 +67,8 @@ services:
       - SYNC_INTERVAL_SECONDS=30
       - EVENT_WAIT_TIMEOUT_SECONDS=20
       - EVENT_BATCH_LIMIT=100
+    volumes:
+      - store_s2_data:/app/data
     networks:
       - meli_network
     depends_on:
@@ -102,6 +104,8 @@ services:
       - SYNC_INTERVAL_SECONDS=30
       - EVENT_WAIT_TIMEOUT_SECONDS=20
       - EVENT_BATCH_LIMIT=100
+    volumes:
+      - store_s3_data:/app/data
     networks:
       - meli_network
     depends_on:
@@ -137,6 +141,8 @@ services:
       - SYNC_INTERVAL_SECONDS=30
       - EVENT_WAIT_TIMEOUT_SECONDS=20
       - EVENT_BATCH_LIMIT=100
+    volumes:
+      - store_s4_data:/app/data
     networks:
       - meli_network
     depends_on:
@@ -172,6 +178,8 @@ services:
       - SYNC_INTERVAL_SECONDS=30
       - EVENT_WAIT_TIMEOUT_SECONDS=20
       - EVENT_BATCH_LIMIT=100
+    volumes:
+      - store_s1_data:/app/data
     networks:
       - meli_network
     depends_on:
@@ -363,6 +371,11 @@ volumes:
   inventory_data:
   prometheus_data:
   grafana_data:
+  # Store API persistent volumes for local cache data
+  store_s1_data:
+  store_s2_data:
+  store_s3_data:
+  store_s4_data:
 
 # Network
 networks:
