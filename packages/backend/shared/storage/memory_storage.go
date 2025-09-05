@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -138,6 +139,11 @@ func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
+	slog.Debug("Applying events to local storage", "event_count", len(events))
+
+	eventsProcessed := 0
+	eventsSkipped := 0
+
 	for _, event := range events {
 		// Since events now contain complete product information,
 		// we can create the product directly from event data
@@ -158,13 +164,49 @@ func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
 
 		// Apply the event based on type
 		switch event.EventType {
-		case models.EventTypeProductUpdated, models.EventTypeProductCreated:
+		case models.EventTypeProductUpdated:
 			ms.products[event.ProductID] = product
+			eventsProcessed++
+			slog.Debug("Product updated in local storage",
+				"product_id", event.ProductID,
+				"name", product.Name,
+				"available", product.Available,
+				"version", product.Version,
+				"offset", event.Offset)
 
-			// Event applied successfully (debug logging can be removed in production)
+		case models.EventTypeProductCreated:
+			ms.products[event.ProductID] = product
+			eventsProcessed++
+			slog.Info("Product created in local storage",
+				"product_id", event.ProductID,
+				"name", product.Name,
+				"available", product.Available,
+				"price", product.Price,
+				"version", product.Version,
+				"offset", event.Offset)
+
+		case models.EventTypeProductDeleted:
+			// Check if product exists before deletion
+			if _, exists := ms.products[event.ProductID]; exists {
+				delete(ms.products, event.ProductID)
+				eventsProcessed++
+				slog.Info("Product deleted from local storage",
+					"product_id", event.ProductID,
+					"name", event.Data.Name,
+					"offset", event.Offset)
+			} else {
+				eventsSkipped++
+				slog.Warn("Attempted to delete non-existent product",
+					"product_id", event.ProductID,
+					"offset", event.Offset)
+			}
+
 		default:
-			// Unknown event type, skip processing
-			// Unknown event type, skip processing
+			eventsSkipped++
+			slog.Warn("Unknown event type, skipping",
+				"event_type", event.EventType,
+				"product_id", event.ProductID,
+				"offset", event.Offset)
 			continue
 		}
 
@@ -172,6 +214,16 @@ func (ms *MemoryStorage) ApplyEvents(events []models.Event) error {
 		if event.Offset >= ms.lastEventOffset {
 			ms.lastEventOffset = event.Offset + 1
 		}
+	}
+
+	// Log summary of applied events
+	if len(events) > 0 {
+		slog.Info("Successfully applied events to local storage",
+			"events_received", len(events),
+			"events_processed", eventsProcessed,
+			"events_skipped", eventsSkipped,
+			"total_products", len(ms.products),
+			"last_offset", ms.lastEventOffset)
 	}
 
 	// Save to file after applying all events
@@ -228,6 +280,19 @@ func (ms *MemoryStorage) UpdateProduct(productID string, available int, version 
 	product.LastUpdated = lastUpdated
 	ms.products[productID] = product
 
+	return nil
+}
+
+// DeleteProduct removes a product from storage
+func (ms *MemoryStorage) DeleteProduct(productID string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.products[productID]; !exists {
+		return fmt.Errorf("product not found: %s", productID)
+	}
+
+	delete(ms.products, productID)
 	return nil
 }
 

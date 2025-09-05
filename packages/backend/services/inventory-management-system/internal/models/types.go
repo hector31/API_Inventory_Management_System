@@ -122,6 +122,45 @@ type AdminSetSummary struct {
 	FailedUpdates     int `json:"failedUpdates"`
 }
 
+// Admin CREATE endpoint models
+type AdminCreateRequest struct {
+	Products []AdminProductCreate `json:"products"`
+}
+
+type AdminProductCreate struct {
+	ProductID string  `json:"productId"`
+	Name      string  `json:"name"`
+	Available int     `json:"available"`
+	Price     float64 `json:"price"`
+}
+
+type AdminCreateResponse struct {
+	Results []AdminProductResult `json:"results"`
+	Summary AdminCreateSummary   `json:"summary"`
+}
+
+type AdminCreateSummary struct {
+	TotalRequests       int `json:"totalRequests"`
+	SuccessfulCreations int `json:"successfulCreations"`
+	FailedCreations     int `json:"failedCreations"`
+}
+
+// Admin DELETE endpoint models
+type AdminDeleteRequest struct {
+	ProductIDs []string `json:"productIds"`
+}
+
+type AdminDeleteResponse struct {
+	Results []AdminProductResult `json:"results"`
+	Summary AdminDeleteSummary   `json:"summary"`
+}
+
+type AdminDeleteSummary struct {
+	TotalRequests       int `json:"totalRequests"`
+	SuccessfulDeletions int `json:"successfulDeletions"`
+	FailedDeletions     int `json:"failedDeletions"`
+}
+
 // EventsResponse represents the response for the events endpoint
 type EventsResponse struct {
 	Events     []Event `json:"events"`
@@ -134,4 +173,5 @@ type EventsResponse struct {
 const (
 	EventTypeProductUpdated = "product_updated"
 	EventTypeProductCreated = "product_created"
+	EventTypeProductDeleted = "product_deleted"
 )

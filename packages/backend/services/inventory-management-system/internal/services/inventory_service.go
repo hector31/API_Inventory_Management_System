@@ -615,6 +615,7 @@ func (s *InventoryService) cacheIdempotencyResult(key string, result *UpdateResu
 
 // saveDataToFile persists the current inventory data to the JSON file
 func (s *InventoryService) saveDataToFile() error {
+	slog.Debug("saveDataToFile called", "enableJSONPersistence", s.enableJSONPersistence)
 	if !s.enableJSONPersistence {
 		slog.Debug("JSON persistence disabled, skipping file save")
 		return nil
@@ -793,6 +794,20 @@ func (s *InventoryService) AdminSetProducts(products []models.AdminProductUpdate
 		}
 	}
 
+	// Persist changes to JSON file if any update was successful
+	if successCount > 0 {
+		slog.Debug("Attempting to persist admin set changes to file", "successful_updates", successCount)
+		if saveErr := s.saveDataToFile(); saveErr != nil {
+			slog.Error("Failed to persist inventory data to file after admin set",
+				"error", saveErr,
+				"successful_updates", successCount)
+			// Note: We don't fail the set operation if file save fails
+			// The in-memory state is still consistent
+		} else {
+			slog.Debug("Successfully persisted admin set changes to file", "successful_updates", successCount)
+		}
+	}
+
 	response := &models.AdminSetResponse{
 		Results: results,
 		Summary: models.AdminSetSummary{
@@ -918,6 +933,277 @@ func (s *InventoryService) processAdminProductUpdate(update models.AdminProductU
 						"current_offset", currentOffset)
 				}
 			})
+		}()
+	}
+
+	return result
+}
+
+// AdminCreateProducts performs admin-level product creation with OCC
+func (s *InventoryService) AdminCreateProducts(products []models.AdminProductCreate) (*models.AdminCreateResponse, error) {
+	slog.Info("Processing admin create request", "product_count", len(products))
+
+	results := make([]models.AdminProductResult, 0, len(products))
+	successCount := 0
+	failureCount := 0
+
+	for _, productCreate := range products {
+		result := s.processAdminProductCreate(productCreate)
+		results = append(results, result)
+
+		if result.Success {
+			successCount++
+		} else {
+			failureCount++
+		}
+	}
+
+	// Persist changes to JSON file if any creation was successful
+	if successCount > 0 {
+		slog.Debug("Attempting to persist admin create changes to file", "successful_creations", successCount)
+		if saveErr := s.saveDataToFile(); saveErr != nil {
+			slog.Error("Failed to persist inventory data to file after admin create",
+				"error", saveErr,
+				"successful_creations", successCount)
+			// Note: We don't fail the create operation if file save fails
+			// The in-memory state is still consistent
+		} else {
+			slog.Debug("Successfully persisted admin create changes to file", "successful_creations", successCount)
+		}
+	}
+
+	response := &models.AdminCreateResponse{
+		Results: results,
+		Summary: models.AdminCreateSummary{
+			TotalRequests:       len(products),
+			SuccessfulCreations: successCount,
+			FailedCreations:     failureCount,
+		},
+	}
+
+	slog.Info("Admin create request completed",
+		"total", len(products),
+		"successful", successCount,
+		"failed", failureCount)
+
+	return response, nil
+}
+
+// processAdminProductCreate handles a single admin product creation with OCC
+func (s *InventoryService) processAdminProductCreate(create models.AdminProductCreate) models.AdminProductResult {
+	slog.Debug("Processing admin product creation", "product_id", create.ProductID)
+
+	// Use product-level locking for OCC
+	var result models.AdminProductResult
+
+	s.productLockManager.WithProductWriteLock(create.ProductID, func() {
+		// Check if product already exists
+		if _, exists := s.data.Products[create.ProductID]; exists {
+			result = models.AdminProductResult{
+				ProductID:    create.ProductID,
+				Success:      false,
+				ErrorType:    ErrTypeValidation,
+				ErrorMessage: "Product already exists",
+			}
+			return
+		}
+
+		// Create new product data
+		newProduct := ProductData{
+			ProductID:   create.ProductID,
+			Name:        create.Name,
+			Available:   create.Available,
+			Price:       create.Price,
+			Version:     1, // Start with version 1
+			LastUpdated: time.Now().Format(time.RFC3339),
+		}
+
+		// Add the product
+		s.data.Products[create.ProductID] = newProduct
+
+		// Update metadata
+		s.data.Metadata.TotalProducts++
+		s.data.Metadata.LastUpdated = newProduct.LastUpdated
+
+		result = models.AdminProductResult{
+			ProductID:   create.ProductID,
+			Success:     true,
+			NewVersion:  newProduct.Version,
+			LastUpdated: newProduct.LastUpdated,
+		}
+
+		slog.Debug("Admin product creation successful",
+			"product_id", create.ProductID,
+			"name", create.Name,
+			"available", create.Available,
+			"price", create.Price)
+	})
+
+	// Publish event if creation was successful
+	if result.Success && s.eventQueue != nil {
+		go func() {
+			// Get the complete created product data
+			s.productLockManager.WithProductReadLock(create.ProductID, func() {
+				if createdProductData, exists := s.data.Products[create.ProductID]; exists {
+					eventData := models.ProductResponse{
+						ProductID:   create.ProductID,
+						Name:        createdProductData.Name,
+						Available:   createdProductData.Available,
+						Version:     createdProductData.Version,
+						LastUpdated: createdProductData.LastUpdated,
+						Price:       createdProductData.Price,
+					}
+
+					s.eventQueue.PublishEvent(
+						models.EventTypeProductCreated,
+						create.ProductID,
+						eventData,
+						createdProductData.Version,
+					)
+
+					// Update metadata with current event offset
+					s.globalMutex.Lock()
+					currentOffset := s.eventQueue.GetCurrentOffset()
+					s.data.Metadata.LastOffset = int(currentOffset)
+					s.data.Metadata.LastUpdated = createdProductData.LastUpdated
+					s.globalMutex.Unlock()
+
+					slog.Debug("Event published for admin product creation",
+						"product_id", create.ProductID,
+						"event_type", models.EventTypeProductCreated,
+						"version", createdProductData.Version,
+						"current_offset", currentOffset)
+				}
+			})
+		}()
+	}
+
+	return result
+}
+
+// AdminDeleteProducts performs admin-level product deletion with OCC
+func (s *InventoryService) AdminDeleteProducts(productIDs []string) (*models.AdminDeleteResponse, error) {
+	slog.Info("Processing admin delete request", "product_count", len(productIDs))
+
+	results := make([]models.AdminProductResult, 0, len(productIDs))
+	successCount := 0
+	failureCount := 0
+
+	for _, productID := range productIDs {
+		result := s.processAdminProductDelete(productID)
+		results = append(results, result)
+
+		if result.Success {
+			successCount++
+		} else {
+			failureCount++
+		}
+	}
+
+	// Persist changes to JSON file if any deletion was successful
+	if successCount > 0 {
+		slog.Debug("Attempting to persist admin delete changes to file", "successful_deletions", successCount)
+		if saveErr := s.saveDataToFile(); saveErr != nil {
+			slog.Error("Failed to persist inventory data to file after admin delete",
+				"error", saveErr,
+				"successful_deletions", successCount)
+			// Note: We don't fail the delete operation if file save fails
+			// The in-memory state is still consistent
+		} else {
+			slog.Debug("Successfully persisted admin delete changes to file", "successful_deletions", successCount)
+		}
+	}
+
+	response := &models.AdminDeleteResponse{
+		Results: results,
+		Summary: models.AdminDeleteSummary{
+			TotalRequests:       len(productIDs),
+			SuccessfulDeletions: successCount,
+			FailedDeletions:     failureCount,
+		},
+	}
+
+	slog.Info("Admin delete request completed",
+		"total", len(productIDs),
+		"successful", successCount,
+		"failed", failureCount)
+
+	return response, nil
+}
+
+// processAdminProductDelete handles a single admin product deletion with OCC
+func (s *InventoryService) processAdminProductDelete(productID string) models.AdminProductResult {
+	slog.Debug("Processing admin product deletion", "product_id", productID)
+
+	// Use product-level locking for OCC
+	var result models.AdminProductResult
+	var deletedProduct ProductData
+	var existed bool
+
+	s.productLockManager.WithProductWriteLock(productID, func() {
+		// Check if product exists and get its data before deletion
+		deletedProduct, existed = s.data.Products[productID]
+		if !existed {
+			result = models.AdminProductResult{
+				ProductID:    productID,
+				Success:      false,
+				ErrorType:    ErrTypeNotFound,
+				ErrorMessage: "Product not found",
+			}
+			return
+		}
+
+		// Delete the product
+		delete(s.data.Products, productID)
+
+		// Update metadata
+		s.data.Metadata.TotalProducts--
+		s.data.Metadata.LastUpdated = time.Now().Format(time.RFC3339)
+
+		result = models.AdminProductResult{
+			ProductID:   productID,
+			Success:     true,
+			NewVersion:  deletedProduct.Version + 1, // Increment version for deletion event
+			LastUpdated: s.data.Metadata.LastUpdated,
+		}
+
+		slog.Debug("Admin product deletion successful",
+			"product_id", productID,
+			"name", deletedProduct.Name)
+	})
+
+	// Publish event if deletion was successful
+	if result.Success && s.eventQueue != nil {
+		go func() {
+			// Create event data with the deleted product information
+			eventData := models.ProductResponse{
+				ProductID:   productID,
+				Name:        deletedProduct.Name,
+				Available:   deletedProduct.Available,
+				Version:     result.NewVersion,
+				LastUpdated: result.LastUpdated,
+				Price:       deletedProduct.Price,
+			}
+
+			s.eventQueue.PublishEvent(
+				models.EventTypeProductDeleted,
+				productID,
+				eventData,
+				result.NewVersion,
+			)
+
+			// Update metadata with current event offset
+			s.globalMutex.Lock()
+			currentOffset := s.eventQueue.GetCurrentOffset()
+			s.data.Metadata.LastOffset = int(currentOffset)
+			s.data.Metadata.LastUpdated = result.LastUpdated
+			s.globalMutex.Unlock()
+
+			slog.Debug("Event published for admin product deletion",
+				"product_id", productID,
+				"event_type", models.EventTypeProductDeleted,
+				"version", result.NewVersion,
+				"current_offset", currentOffset)
 		}()
 	}
 

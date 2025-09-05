@@ -88,7 +88,7 @@ func main() {
 	v1.Use(middleware.AuthMiddleware)
 
 	// Central Inventory API routes (v1) - specific routes first
-	v1.HandleFunc("/inventory/updates", inventoryHandler.UpdateInventory).Methods("POST")
+	v1.HandleFunc("/inventory/updates", inventoryHandler.UpdateInventory).Methods("POST") // Not Use PATCH because it's not a partial update
 	v1.HandleFunc("/inventory/events", eventsHandler.GetEvents).Methods("GET")
 	v1.HandleFunc("/inventory/{productId}", inventoryHandler.GetProduct).Methods("GET")
 	v1.HandleFunc("/inventory", inventoryHandler.ListProducts).Methods("GET")
@@ -96,7 +96,9 @@ func main() {
 	// Admin API routes (v1) - require admin authentication
 	adminV1 := r.PathPrefix("/v1/admin").Subrouter()
 	adminV1.Use(middleware.AdminAuthMiddleware)
-	adminV1.HandleFunc("/products/set", adminHandler.SetProducts).Methods("POST")
+	adminV1.HandleFunc("/products/set", adminHandler.SetProducts).Methods("PUT") // Not Use PATCH because it's not a partial update
+	adminV1.HandleFunc("/products/create", adminHandler.CreateProducts).Methods("POST")
+	adminV1.HandleFunc("/products/delete", adminHandler.DeleteProducts).Methods("DELETE")
 
 	// Health check endpoint (no auth required)
 	r.HandleFunc("/health", healthHandler.Health).Methods("GET")
